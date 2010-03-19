@@ -95,3 +95,6 @@ function removeDialog() {
     Element.hide($$('.graybox')[0]);
 }
 
+function repositionDialog () {
+    Position.EyeLevel($$('.dialog')[0]);
+}

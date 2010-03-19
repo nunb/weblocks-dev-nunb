@@ -78,6 +78,8 @@ function onActionSuccess(transport) {
     }
 
     execJsonCalls(json['on-load']);
+
+    repositionDialog();
 }
 
 function execJsonCalls (calls) {

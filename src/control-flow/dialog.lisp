@@ -8,11 +8,20 @@
 dialog."
   title close widget css-class)
 
+(defun current-uri ()
+  (concatenate 'string
+               (string-right-trim "/" *current-navigation-url*)
+               "/"
+               (string-left-trim "/" (compose-uri-tokens-to-url *uri-tokens*))))
+
 (defmacro current-dialog ()
   "Expands to code that signifies a place that contains information
 about the currently active dialog, if any. The place holds a structure
 of type 'dialog'."
-  `(webapp-session-value 'dialog-contents))
+  `(gethash (current-uri)
+            (or (webapp-session-value 'dialog-contents)
+                (setf (webapp-session-value 'dialog-contents)
+                      (make-hash-table :test #'equalp)))))
 
 (defun make-dialog-js (title widget css-class &optional close escape-script-tags-p)
   "Returns a string with JS code that shows a modal pop-up dialog with
@@ -49,6 +58,7 @@ the widget inside."
   "This callback function is called by 'handle-client-request'. If a
 request is a refresh and a dialog was shown, appropriate JS is
 inserted into the page to redraw the dialog."
+  ;(format t "~%UPDATE-DIALOG: tokens=~S, cnavurl=~S~%" *uri-tokens* *current-navigation-url*)
   (let ((current-dialog (current-dialog)))
     (when (and current-dialog
 	       (refresh-request-p))
