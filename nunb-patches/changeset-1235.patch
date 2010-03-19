@@ -13,7 +13,7 @@ diff -r d943d59b2599 -r d4b653ff9eb6 src/control-flow/dialog.lisp
    (let ((current-dialog (current-dialog)))
      (when (and current-dialog
 -	       (refresh-request-p))
-+	       (not (ajax-request-p)))
++	       (refresh-request-p))
        (with-javascript
  	(ps* `(:|*Event.observe| window "load"
                                   (lambda ()

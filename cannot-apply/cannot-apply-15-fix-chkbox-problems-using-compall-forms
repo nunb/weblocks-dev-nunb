@@ -1,0 +1,84 @@
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1261146019 -3600
+# Node ID 652d4c40270744d1200cdda22adc18a28e5a9a00
+# Parent  8069a60df2f241c74a9c94a15ecc432ef2e1c3a9
+Fix the problem with checkboxes by using compall-forms stuff.
+
+diff -r 8069a60df2f2 -r 652d4c402707 src/views/types/boolean.lisp
+--- a/src/views/types/boolean.lisp	Fri Dec 18 12:53:10 2009 +0100
++++ b/src/views/types/boolean.lisp	Fri Dec 18 15:20:19 2009 +0100
+@@ -44,11 +44,15 @@
+ 
+ (defmethod render-view-field-value (value (presentation checkbox-presentation)
+ 				    (field form-view-field) (view form-view) widget obj
+-				    &rest args &key intermediate-values &allow-other-keys)
++				    &rest args &key intermediate-values field-info &allow-other-keys)
+   (declare (ignore args))
+   (multiple-value-bind (intermediate-value intermediate-value-p)
+       (form-field-intermediate-value field intermediate-values)
+-    (render-checkbox (view-field-slot-name field)
++    (render-checkbox
++     (if field-info
++	 (attributize-view-field-name field-info)
++	 (attributize-name (view-field-slot-name field)))
++     ;; was (view-field-slot-name field) instead of above.
+ 		     (if intermediate-value-p
+ 			 intermediate-value
+ 			 value))))
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1261146019 -3600
+# Node ID 652d4c40270744d1200cdda22adc18a28e5a9a00
+# Parent  8069a60df2f241c74a9c94a15ecc432ef2e1c3a9
+Fix the problem with checkboxes by using compall-forms stuff.
+
+diff -r 8069a60df2f2 -r 652d4c402707 src/views/types/boolean.lisp
+--- a/src/views/types/boolean.lisp	Fri Dec 18 12:53:10 2009 +0100
++++ b/src/views/types/boolean.lisp	Fri Dec 18 15:20:19 2009 +0100
+@@ -44,11 +44,15 @@
+ 
+ (defmethod render-view-field-value (value (presentation checkbox-presentation)
+ 				    (field form-view-field) (view form-view) widget obj
+-				    &rest args &key intermediate-values &allow-other-keys)
++				    &rest args &key intermediate-values field-info &allow-other-keys)
+   (declare (ignore args))
+   (multiple-value-bind (intermediate-value intermediate-value-p)
+       (form-field-intermediate-value field intermediate-values)
+-    (render-checkbox (view-field-slot-name field)
++    (render-checkbox
++     (if field-info
++	 (attributize-view-field-name field-info)
++	 (attributize-name (view-field-slot-name field)))
++     ;; was (view-field-slot-name field) instead of above.
+ 		     (if intermediate-value-p
+ 			 intermediate-value
+ 			 value))))
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1261146019 -3600
+# Node ID 652d4c40270744d1200cdda22adc18a28e5a9a00
+# Parent  8069a60df2f241c74a9c94a15ecc432ef2e1c3a9
+Fix the problem with checkboxes by using compall-forms stuff.
+
+diff -r 8069a60df2f2 -r 652d4c402707 src/views/types/boolean.lisp
+--- a/src/views/types/boolean.lisp	Fri Dec 18 12:53:10 2009 +0100
++++ b/src/views/types/boolean.lisp	Fri Dec 18 15:20:19 2009 +0100
+@@ -44,11 +44,15 @@
+ 
+ (defmethod render-view-field-value (value (presentation checkbox-presentation)
+ 				    (field form-view-field) (view form-view) widget obj
+-				    &rest args &key intermediate-values &allow-other-keys)
++				    &rest args &key intermediate-values field-info &allow-other-keys)
+   (declare (ignore args))
+   (multiple-value-bind (intermediate-value intermediate-value-p)
+       (form-field-intermediate-value field intermediate-values)
+-    (render-checkbox (view-field-slot-name field)
++    (render-checkbox
++     (if field-info
++	 (attributize-view-field-name field-info)
++	 (attributize-name (view-field-slot-name field)))
++     ;; was (view-field-slot-name field) instead of above.
+ 		     (if intermediate-value-p
+ 			 intermediate-value
+ 			 value))))

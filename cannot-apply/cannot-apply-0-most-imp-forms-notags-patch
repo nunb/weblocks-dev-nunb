@@ -1,0 +1,144 @@
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1254473242 -7200
+# Node ID 206dfbc90c490c4fdb9b3342538613a3ca453bba
+# Parent  d4776463e85c757198ba025d2ffe47e815d94f68
+Add scripts to page template and change form macro
+
+diff -r d4776463e85c -r 206dfbc90c49 src/page-template.lisp
+--- a/src/page-template.lisp	Sun Aug 23 11:46:02 2009 +0200
++++ b/src/page-template.lisp	Fri Oct 02 10:47:22 2009 +0200
+@@ -4,6 +4,7 @@
+ (export '(render-page render-page-body render-page-headers page-title))
+ 
+ (defvar *page-dependencies*)
++(defvar *page-scripts*)
+ (setf (documentation '*page-dependencies* 'variable)
+       "A list of dependencies of the currently rendered page.")
+ 
+diff -r d4776463e85c -r 206dfbc90c49 src/snippets/html-utils.lisp
+--- a/src/snippets/html-utils.lisp	Sun Aug 23 11:46:02 2009 +0200
++++ b/src/snippets/html-utils.lisp	Fri Oct 02 10:47:22 2009 +0200
+@@ -30,7 +30,7 @@
+   "The name of the control responsible for cancellation of form
+   submission.")
+ 
+-(defmacro with-html-form ((method-type action &key id class enctype (use-ajax-p t) extra-submit-code
++(defmacro with-html-form ((method-type action &key id class enctype (use-ajax-p t) extra-submit-code (form-prefix-body nil)				       
+                           (submit-fn "initiateFormAction(\"~A\", $(this), \"~A\")")) &body body)
+   "Transforms to cl-who (:form) with standard form code (AJAX support, actions, etc.)"
+   (let ((action-code (gensym)))
+@@ -44,10 +44,9 @@
+                                     (format nil ,submit-fn
+                                             (url-encode (or ,action-code ""))
+                                             (session-name-string-pair))))
+-                (with-extra-tags
+-                  (htm (:fieldset
++                  (:fieldset
+                         ,@body
+-                        (:input :name *action-string* :type "hidden" :value ,action-code))))))
++                        (:input :name *action-string* :type "hidden" :value ,action-code))))
+        (log-form ,action-code :id ,id :class ,class))))
+ 
+ (defun render-link (action name &key (ajaxp t) id class)
+@@ -378,4 +377,3 @@
+     (:p (if caption
+ 	    (htm (:span :class "caption" (str caption) ":&nbsp;")))
+ 	(:span :class "message" (str message)))))
+-
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1254473242 -7200
+# Node ID 206dfbc90c490c4fdb9b3342538613a3ca453bba
+# Parent  d4776463e85c757198ba025d2ffe47e815d94f68
+Add scripts to page template and change form macro
+
+diff -r d4776463e85c -r 206dfbc90c49 src/page-template.lisp
+--- a/src/page-template.lisp	Sun Aug 23 11:46:02 2009 +0200
++++ b/src/page-template.lisp	Fri Oct 02 10:47:22 2009 +0200
+@@ -4,6 +4,7 @@
+ (export '(render-page render-page-body render-page-headers page-title))
+ 
+ (defvar *page-dependencies*)
++(defvar *page-scripts*)
+ (setf (documentation '*page-dependencies* 'variable)
+       "A list of dependencies of the currently rendered page.")
+ 
+diff -r d4776463e85c -r 206dfbc90c49 src/snippets/html-utils.lisp
+--- a/src/snippets/html-utils.lisp	Sun Aug 23 11:46:02 2009 +0200
++++ b/src/snippets/html-utils.lisp	Fri Oct 02 10:47:22 2009 +0200
+@@ -30,7 +30,7 @@
+   "The name of the control responsible for cancellation of form
+   submission.")
+ 
+-(defmacro with-html-form ((method-type action &key id class enctype (use-ajax-p t) extra-submit-code
++(defmacro with-html-form ((method-type action &key id class enctype (use-ajax-p t) extra-submit-code (form-prefix-body nil)				       
+                           (submit-fn "initiateFormAction(\"~A\", $(this), \"~A\")")) &body body)
+   "Transforms to cl-who (:form) with standard form code (AJAX support, actions, etc.)"
+   (let ((action-code (gensym)))
+@@ -44,10 +44,9 @@
+                                     (format nil ,submit-fn
+                                             (url-encode (or ,action-code ""))
+                                             (session-name-string-pair))))
+-                (with-extra-tags
+-                  (htm (:fieldset
++                  (:fieldset
+                         ,@body
+-                        (:input :name *action-string* :type "hidden" :value ,action-code))))))
++                        (:input :name *action-string* :type "hidden" :value ,action-code))))
+        (log-form ,action-code :id ,id :class ,class))))
+ 
+ (defun render-link (action name &key (ajaxp t) id class)
+@@ -378,4 +377,3 @@
+     (:p (if caption
+ 	    (htm (:span :class "caption" (str caption) ":&nbsp;")))
+ 	(:span :class "message" (str message)))))
+-
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1254473242 -7200
+# Node ID 206dfbc90c490c4fdb9b3342538613a3ca453bba
+# Parent  d4776463e85c757198ba025d2ffe47e815d94f68
+Add scripts to page template and change form macro
+
+diff -r d4776463e85c -r 206dfbc90c49 src/page-template.lisp
+--- a/src/page-template.lisp	Sun Aug 23 11:46:02 2009 +0200
++++ b/src/page-template.lisp	Fri Oct 02 10:47:22 2009 +0200
+@@ -4,6 +4,7 @@
+ (export '(render-page render-page-body render-page-headers page-title))
+ 
+ (defvar *page-dependencies*)
++(defvar *page-scripts*)
+ (setf (documentation '*page-dependencies* 'variable)
+       "A list of dependencies of the currently rendered page.")
+ 
+diff -r d4776463e85c -r 206dfbc90c49 src/snippets/html-utils.lisp
+--- a/src/snippets/html-utils.lisp	Sun Aug 23 11:46:02 2009 +0200
++++ b/src/snippets/html-utils.lisp	Fri Oct 02 10:47:22 2009 +0200
+@@ -30,7 +30,7 @@
+   "The name of the control responsible for cancellation of form
+   submission.")
+ 
+-(defmacro with-html-form ((method-type action &key id class enctype (use-ajax-p t) extra-submit-code
++(defmacro with-html-form ((method-type action &key id class enctype (use-ajax-p t) extra-submit-code (form-prefix-body nil)				       
+                           (submit-fn "initiateFormAction(\"~A\", $(this), \"~A\")")) &body body)
+   "Transforms to cl-who (:form) with standard form code (AJAX support, actions, etc.)"
+   (let ((action-code (gensym)))
+@@ -44,10 +44,9 @@
+                                     (format nil ,submit-fn
+                                             (url-encode (or ,action-code ""))
+                                             (session-name-string-pair))))
+-                (with-extra-tags
+-                  (htm (:fieldset
++                  (:fieldset
+                         ,@body
+-                        (:input :name *action-string* :type "hidden" :value ,action-code))))))
++                        (:input :name *action-string* :type "hidden" :value ,action-code))))
+        (log-form ,action-code :id ,id :class ,class))))
+ 
+ (defun render-link (action name &key (ajaxp t) id class)
+@@ -378,4 +377,3 @@
+     (:p (if caption
+ 	    (htm (:span :class "caption" (str caption) ":&nbsp;")))
+ 	(:span :class "message" (str message)))))
+-

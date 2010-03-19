@@ -1,0 +1,32 @@
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1258906788 -3600
+# Node ID a25c651e29011a88d24756230ea633461ab9c9eb
+# Parent  ba5a806c2b82b272af31b3e2df3b05dec1783c75
+Minor things mostly: allow multiple dialogs, add rel attribute, and bring in jwr's version of form view utils from latest weblocks-dev
+
+diff -r ba5a806c2b82 -r a25c651e2901 src/control-flow/dialog.lisp
+--- a/src/control-flow/dialog.lisp	Thu Nov 05 11:35:21 2009 +0100
++++ b/src/control-flow/dialog.lisp	Sun Nov 22 17:19:48 2009 +0100
+@@ -78,15 +78,16 @@
+ (defun/cc do-dialog (title callee &key css-class close)
+   (declare (special *on-ajax-complete-scripts*))
+   (if (ajax-request-p)
+-      (prog2
+-	  (when (current-dialog)
+-	    (error "Multiple dialogs not allowed."))
+-	  (call callee (lambda (new-callee)
++      (cond
++	  ((current-dialog)
++	    (warn "Multiple dialogs not allowed."))
++	  (t
++	   (call callee (lambda (new-callee)
+ 			 (setf (current-dialog) (make-dialog :title title
+ 							     :widget new-callee
+ 							     :close close
+ 							     :css-class css-class))
+-                         (send-script (ps* (make-dialog-js title new-callee css-class close)))))
++                         (send-script (ps* (make-dialog-js title new-callee css-class close))))))
+ 	(setf (current-dialog) nil)
+         (send-script (ps (remove-dialog))))
+       (do-modal title callee :css-class css-class)))

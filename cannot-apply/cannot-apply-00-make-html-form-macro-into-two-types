@@ -1,0 +1,117 @@
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1254475325 -7200
+# Node ID 4216775578d5d6866482fbedec58d1d889d91ba0
+# Parent  206dfbc90c490c4fdb9b3342538613a3ca453bba
+Update: break with-html-form into two types.
+
+diff -r 206dfbc90c49 -r 4216775578d5 src/snippets/html-utils.lisp
+--- a/src/snippets/html-utils.lisp	Fri Oct 02 10:47:22 2009 +0200
++++ b/src/snippets/html-utils.lisp	Fri Oct 02 11:22:05 2009 +0200
+@@ -44,6 +44,28 @@
+                                     (format nil ,submit-fn
+                                             (url-encode (or ,action-code ""))
+                                             (session-name-string-pair))))
++		(with-extra-tags
++		  (htm
++		   (:fieldset
++                        ,@body
++                        (:input :name *action-string* :type "hidden" :value ,action-code))))))
++       (log-form ,action-code :id ,id :class ,class))))
++
++(defmacro with-html-form-change-fieldset-extra-tags
++    ((method-type action &key id class enctype (use-ajax-p t) extra-submit-code (form-prefix-body nil)				       
++                          (submit-fn "initiateFormAction(\"~A\", $(this), \"~A\")")) &body body)
++  "Transforms to cl-who (:form) with standard form code (AJAX support, actions, etc.)"
++  (let ((action-code (gensym)))
++    `(let ((,action-code (function-or-action->action ,action)))
++       (with-html
++         (:form :id ,id :class ,class :action (request-uri-path)
++                :method (attributize-name ,method-type) :enctype ,enctype
++                :onsubmit (when ,use-ajax-p
++                            (format nil "~@[~A~]~A; return false;"
++				    ,extra-submit-code
++                                    (format nil ,submit-fn
++                                            (url-encode (or ,action-code ""))
++                                            (session-name-string-pair))))
+                   (:fieldset
+                         ,@body
+                         (:input :name *action-string* :type "hidden" :value ,action-code))))
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1254475325 -7200
+# Node ID 4216775578d5d6866482fbedec58d1d889d91ba0
+# Parent  206dfbc90c490c4fdb9b3342538613a3ca453bba
+Update: break with-html-form into two types.
+
+diff -r 206dfbc90c49 -r 4216775578d5 src/snippets/html-utils.lisp
+--- a/src/snippets/html-utils.lisp	Fri Oct 02 10:47:22 2009 +0200
++++ b/src/snippets/html-utils.lisp	Fri Oct 02 11:22:05 2009 +0200
+@@ -44,6 +44,28 @@
+                                     (format nil ,submit-fn
+                                             (url-encode (or ,action-code ""))
+                                             (session-name-string-pair))))
++		(with-extra-tags
++		  (htm
++		   (:fieldset
++                        ,@body
++                        (:input :name *action-string* :type "hidden" :value ,action-code))))))
++       (log-form ,action-code :id ,id :class ,class))))
++
++(defmacro with-html-form-change-fieldset-extra-tags
++    ((method-type action &key id class enctype (use-ajax-p t) extra-submit-code (form-prefix-body nil)				       
++                          (submit-fn "initiateFormAction(\"~A\", $(this), \"~A\")")) &body body)
++  "Transforms to cl-who (:form) with standard form code (AJAX support, actions, etc.)"
++  (let ((action-code (gensym)))
++    `(let ((,action-code (function-or-action->action ,action)))
++       (with-html
++         (:form :id ,id :class ,class :action (request-uri-path)
++                :method (attributize-name ,method-type) :enctype ,enctype
++                :onsubmit (when ,use-ajax-p
++                            (format nil "~@[~A~]~A; return false;"
++				    ,extra-submit-code
++                                    (format nil ,submit-fn
++                                            (url-encode (or ,action-code ""))
++                                            (session-name-string-pair))))
+                   (:fieldset
+                         ,@body
+                         (:input :name *action-string* :type "hidden" :value ,action-code))))
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1254475325 -7200
+# Node ID 4216775578d5d6866482fbedec58d1d889d91ba0
+# Parent  206dfbc90c490c4fdb9b3342538613a3ca453bba
+Update: break with-html-form into two types.
+
+diff -r 206dfbc90c49 -r 4216775578d5 src/snippets/html-utils.lisp
+--- a/src/snippets/html-utils.lisp	Fri Oct 02 10:47:22 2009 +0200
++++ b/src/snippets/html-utils.lisp	Fri Oct 02 11:22:05 2009 +0200
+@@ -44,6 +44,28 @@
+                                     (format nil ,submit-fn
+                                             (url-encode (or ,action-code ""))
+                                             (session-name-string-pair))))
++		(with-extra-tags
++		  (htm
++		   (:fieldset
++                        ,@body
++                        (:input :name *action-string* :type "hidden" :value ,action-code))))))
++       (log-form ,action-code :id ,id :class ,class))))
++
++(defmacro with-html-form-change-fieldset-extra-tags
++    ((method-type action &key id class enctype (use-ajax-p t) extra-submit-code (form-prefix-body nil)				       
++                          (submit-fn "initiateFormAction(\"~A\", $(this), \"~A\")")) &body body)
++  "Transforms to cl-who (:form) with standard form code (AJAX support, actions, etc.)"
++  (let ((action-code (gensym)))
++    `(let ((,action-code (function-or-action->action ,action)))
++       (with-html
++         (:form :id ,id :class ,class :action (request-uri-path)
++                :method (attributize-name ,method-type) :enctype ,enctype
++                :onsubmit (when ,use-ajax-p
++                            (format nil "~@[~A~]~A; return false;"
++				    ,extra-submit-code
++                                    (format nil ,submit-fn
++                                            (url-encode (or ,action-code ""))
++                                            (session-name-string-pair))))
+                   (:fieldset
+                         ,@body
+                         (:input :name *action-string* :type "hidden" :value ,action-code))))

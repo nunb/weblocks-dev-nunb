@@ -1,0 +1,162 @@
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1261130895 -3600
+# Node ID 29e589f3ffb16f780c71bf16473091666a52c5ba
+# Parent  b3ab68b58d0766a5bfa303e3726c0d9a0be48904
+Bundle -- changes to bring in checkboxes and txn-p for stores from -dev
+
+diff -r b3ab68b58d07 -r 29e589f3ffb1 src/store/memory/memory.lisp
+--- a/src/store/memory/memory.lisp	Fri Nov 27 09:18:52 2009 +0100
++++ b/src/store/memory/memory.lisp	Fri Dec 18 11:08:15 2009 +0100
+@@ -71,7 +71,7 @@
+   (:documentation "This class represents an alternative to RDBMS
+   table, holding object instances of a given class."))
+ 
+-(defmethod persist-object ((store memory-store) object)
++(defmethod persist-object ((store memory-store) object &key txn-p)
+   (let* ((class-name (class-name (class-of object)))
+ 	 (objects (or (get-root-object store class-name)
+ 		      (setf (get-root-object store class-name)
+diff -r b3ab68b58d07 -r 29e589f3ffb1 src/store/store-api.lisp
+--- a/src/store/store-api.lisp	Fri Nov 27 09:18:52 2009 +0100
++++ b/src/store/store-api.lisp	Fri Dec 18 11:08:15 2009 +0100
+@@ -47,7 +47,7 @@
+   signalling errors."))
+ 
+ ;;; Creating and deleting persistent objects
+-(defgeneric persist-object (store object)
++(defgeneric persist-object (store object &key txn-p)
+   (:documentation "Persists 'object' into 'store'. If the object does
+   not have a unique ID (see 'object-id'), persist 'object' into store
+   and set its unique ID via (see '(setf object-id)'). If the object
+diff -r b3ab68b58d07 -r 29e589f3ffb1 src/views/types/boolean.lisp
+--- a/src/views/types/boolean.lisp	Fri Nov 27 09:18:52 2009 +0100
++++ b/src/views/types/boolean.lisp	Fri Dec 18 11:08:15 2009 +0100
+@@ -62,6 +62,7 @@
+ (defmethod parse-view-field-value ((parser predicate-parser) value obj
+ 				   (view form-view) (field form-view-field) &rest args)
+   (declare (ignore args))
++  ;;(break (format nil "boolean parser got ~A" value))
+   (cond
+     ((member value '("t" "f") :test #'string-equal) (values t t t))
+     ((null value) (values t t nil))
+diff -r b3ab68b58d07 -r 29e589f3ffb1 src/views/types/presentations/checkboxes.lisp
+--- a/src/views/types/presentations/checkboxes.lisp	Fri Nov 27 09:18:52 2009 +0100
++++ b/src/views/types/presentations/checkboxes.lisp	Fri Dec 18 11:08:15 2009 +0100
+@@ -81,7 +81,7 @@
+ (defmethod parse-view-field-value ((parser checkboxes-parser) value obj
+                                    (view form-view) (field form-view-field) &rest args)
+   (declare (ignore args))
+-  (let ((result (mapcar (curry-after #'intern "KEYWORD")
++  (let ((result (mapcar (compose (curry-after #'intern "KEYWORD") #'string-upcase)
+                         (post-parameter->list
+                           (symbol-name (view-field-slot-name field))))))
+       (values t result result)))
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1261130895 -3600
+# Node ID 29e589f3ffb16f780c71bf16473091666a52c5ba
+# Parent  b3ab68b58d0766a5bfa303e3726c0d9a0be48904
+Bundle -- changes to bring in checkboxes and txn-p for stores from -dev
+
+diff -r b3ab68b58d07 -r 29e589f3ffb1 src/store/memory/memory.lisp
+--- a/src/store/memory/memory.lisp	Fri Nov 27 09:18:52 2009 +0100
++++ b/src/store/memory/memory.lisp	Fri Dec 18 11:08:15 2009 +0100
+@@ -71,7 +71,7 @@
+   (:documentation "This class represents an alternative to RDBMS
+   table, holding object instances of a given class."))
+ 
+-(defmethod persist-object ((store memory-store) object)
++(defmethod persist-object ((store memory-store) object &key txn-p)
+   (let* ((class-name (class-name (class-of object)))
+ 	 (objects (or (get-root-object store class-name)
+ 		      (setf (get-root-object store class-name)
+diff -r b3ab68b58d07 -r 29e589f3ffb1 src/store/store-api.lisp
+--- a/src/store/store-api.lisp	Fri Nov 27 09:18:52 2009 +0100
++++ b/src/store/store-api.lisp	Fri Dec 18 11:08:15 2009 +0100
+@@ -47,7 +47,7 @@
+   signalling errors."))
+ 
+ ;;; Creating and deleting persistent objects
+-(defgeneric persist-object (store object)
++(defgeneric persist-object (store object &key txn-p)
+   (:documentation "Persists 'object' into 'store'. If the object does
+   not have a unique ID (see 'object-id'), persist 'object' into store
+   and set its unique ID via (see '(setf object-id)'). If the object
+diff -r b3ab68b58d07 -r 29e589f3ffb1 src/views/types/boolean.lisp
+--- a/src/views/types/boolean.lisp	Fri Nov 27 09:18:52 2009 +0100
++++ b/src/views/types/boolean.lisp	Fri Dec 18 11:08:15 2009 +0100
+@@ -62,6 +62,7 @@
+ (defmethod parse-view-field-value ((parser predicate-parser) value obj
+ 				   (view form-view) (field form-view-field) &rest args)
+   (declare (ignore args))
++  ;;(break (format nil "boolean parser got ~A" value))
+   (cond
+     ((member value '("t" "f") :test #'string-equal) (values t t t))
+     ((null value) (values t t nil))
+diff -r b3ab68b58d07 -r 29e589f3ffb1 src/views/types/presentations/checkboxes.lisp
+--- a/src/views/types/presentations/checkboxes.lisp	Fri Nov 27 09:18:52 2009 +0100
++++ b/src/views/types/presentations/checkboxes.lisp	Fri Dec 18 11:08:15 2009 +0100
+@@ -81,7 +81,7 @@
+ (defmethod parse-view-field-value ((parser checkboxes-parser) value obj
+                                    (view form-view) (field form-view-field) &rest args)
+   (declare (ignore args))
+-  (let ((result (mapcar (curry-after #'intern "KEYWORD")
++  (let ((result (mapcar (compose (curry-after #'intern "KEYWORD") #'string-upcase)
+                         (post-parameter->list
+                           (symbol-name (view-field-slot-name field))))))
+       (values t result result)))
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1261130895 -3600
+# Node ID 29e589f3ffb16f780c71bf16473091666a52c5ba
+# Parent  b3ab68b58d0766a5bfa303e3726c0d9a0be48904
+Bundle -- changes to bring in checkboxes and txn-p for stores from -dev
+
+diff -r b3ab68b58d07 -r 29e589f3ffb1 src/store/memory/memory.lisp
+--- a/src/store/memory/memory.lisp	Fri Nov 27 09:18:52 2009 +0100
++++ b/src/store/memory/memory.lisp	Fri Dec 18 11:08:15 2009 +0100
+@@ -71,7 +71,7 @@
+   (:documentation "This class represents an alternative to RDBMS
+   table, holding object instances of a given class."))
+ 
+-(defmethod persist-object ((store memory-store) object)
++(defmethod persist-object ((store memory-store) object &key txn-p)
+   (let* ((class-name (class-name (class-of object)))
+ 	 (objects (or (get-root-object store class-name)
+ 		      (setf (get-root-object store class-name)
+diff -r b3ab68b58d07 -r 29e589f3ffb1 src/store/store-api.lisp
+--- a/src/store/store-api.lisp	Fri Nov 27 09:18:52 2009 +0100
++++ b/src/store/store-api.lisp	Fri Dec 18 11:08:15 2009 +0100
+@@ -47,7 +47,7 @@
+   signalling errors."))
+ 
+ ;;; Creating and deleting persistent objects
+-(defgeneric persist-object (store object)
++(defgeneric persist-object (store object &key txn-p)
+   (:documentation "Persists 'object' into 'store'. If the object does
+   not have a unique ID (see 'object-id'), persist 'object' into store
+   and set its unique ID via (see '(setf object-id)'). If the object
+diff -r b3ab68b58d07 -r 29e589f3ffb1 src/views/types/boolean.lisp
+--- a/src/views/types/boolean.lisp	Fri Nov 27 09:18:52 2009 +0100
++++ b/src/views/types/boolean.lisp	Fri Dec 18 11:08:15 2009 +0100
+@@ -62,6 +62,7 @@
+ (defmethod parse-view-field-value ((parser predicate-parser) value obj
+ 				   (view form-view) (field form-view-field) &rest args)
+   (declare (ignore args))
++  ;;(break (format nil "boolean parser got ~A" value))
+   (cond
+     ((member value '("t" "f") :test #'string-equal) (values t t t))
+     ((null value) (values t t nil))
+diff -r b3ab68b58d07 -r 29e589f3ffb1 src/views/types/presentations/checkboxes.lisp
+--- a/src/views/types/presentations/checkboxes.lisp	Fri Nov 27 09:18:52 2009 +0100
++++ b/src/views/types/presentations/checkboxes.lisp	Fri Dec 18 11:08:15 2009 +0100
+@@ -81,7 +81,7 @@
+ (defmethod parse-view-field-value ((parser checkboxes-parser) value obj
+                                    (view form-view) (field form-view-field) &rest args)
+   (declare (ignore args))
+-  (let ((result (mapcar (curry-after #'intern "KEYWORD")
++  (let ((result (mapcar (compose (curry-after #'intern "KEYWORD") #'string-upcase)
+                         (post-parameter->list
+                           (symbol-name (view-field-slot-name field))))))
+       (values t result result)))
