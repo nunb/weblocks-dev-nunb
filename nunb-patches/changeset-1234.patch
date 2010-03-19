@@ -1,0 +1,40 @@
+# HG changeset patch
+# User "Leslie P. Polzer <polzer@gnu.org>"
+# Date 1238771743 -7200
+# Node ID d943d59b259961ffb12b2af1b4f2e4a4e07af0c9
+# Parent  bb068e7a26e481a601b84e68fbb70ddbaa69ef3f
+Allow multiple dialogs (one per URI).
+
+diff -r bb068e7a26e4 -r d943d59b2599 src/control-flow/dialog.lisp
+--- a/src/control-flow/dialog.lisp	Tue Mar 31 12:05:37 2009 +0200
++++ b/src/control-flow/dialog.lisp	Fri Apr 03 17:15:43 2009 +0200
+@@ -8,11 +8,20 @@
+ dialog."
+   title close widget css-class)
+ 
++(defun current-uri ()
++  (concatenate 'string
++               (string-right-trim "/" *current-navigation-url*)
++               "/"
++               (string-left-trim "/" (compose-uri-tokens-to-url *uri-tokens*))))
++
+ (defmacro current-dialog ()
+   "Expands to code that signifies a place that contains information
+ about the currently active dialog, if any. The place holds a structure
+ of type 'dialog'."
+-  `(webapp-session-value 'dialog-contents))
++  `(gethash (current-uri)
++            (or (webapp-session-value 'dialog-contents)
++                (setf (webapp-session-value 'dialog-contents)
++                      (make-hash-table :test #'equalp)))))
+ 
+ (defun make-dialog-js (title widget css-class &optional close escape-script-tags-p)
+   "Returns a string with JS code that shows a modal pop-up dialog with
+@@ -49,6 +58,7 @@
+   "This callback function is called by 'handle-client-request'. If a
+ request is a refresh and a dialog was shown, appropriate JS is
+ inserted into the page to redraw the dialog."
++  ;(format t "~%UPDATE-DIALOG: tokens=~S, cnavurl=~S~%" *uri-tokens* *current-navigation-url*)
+   (let ((current-dialog (current-dialog)))
+     (when (and current-dialog
+ 	       (refresh-request-p))

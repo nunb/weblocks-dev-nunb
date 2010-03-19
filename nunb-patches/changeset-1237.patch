@@ -1,0 +1,46 @@
+# HG changeset patch
+# User Leslie P. Polzer <polzer@gnu.org>
+# Date 1242054274 -7200
+# Node ID 7ced1237bb0bcfc1c9126ef1b2ea2a8f47f2d368
+# Parent  2d68816eb2c6c8f62f34119f563bfde4739597c8
+ignore missing actions by default; provide switch to enable the assertion
+(transplanted from c027c778ad27102cd65aa5d343e9380a6bc81d32)
+
+diff -r 2d68816eb2c6 -r 7ced1237bb0b src/actions.lisp
+--- a/src/actions.lisp	Fri May 08 12:12:31 2009 +0200
++++ b/src/actions.lisp	Mon May 11 17:04:34 2009 +0200
+@@ -1,7 +1,12 @@
+ 
+ (in-package :weblocks)
+ 
+-(export '(*expired-action-handler* expired-action-handler page-not-found-handler make-action-url make-action))
++(export '(*expired-action-handler*
++          expired-action-handler
++          page-not-found-handler
++          make-action-url
++          make-action
++          *ignore-missing-actions*))
+ 
+ (defparameter *expired-action-handler* 'default-expired-action-handler
+   "Must be bound to a designator of a function with a single optional
+@@ -111,6 +116,8 @@
+ 			  get/post-action-name)))
+     action-name))
+ 
++(defvar *ignore-missing-actions* t)
++
+ (defun get-request-action ()
+   "Gets an action from the request. If the request contains
+ *action-string* parameter, the action is looked up in the session and
+@@ -123,8 +130,9 @@
+       (let ((permanent-action (webapp-permanent-action action-name))
+ 	    (session-action (webapp-session-value action-name)))
+ 	(setf request-action (or permanent-action session-action))
+-	(assert request-action (request-action)
+-		(concatenate 'string "Cannot find action: " action-name))
++        (unless *ignore-missing-actions*
++          (assert request-action (request-action)
++                  (concatenate 'string "Cannot find action: " action-name)))
+ 	request-action))))
+ 
+ (defun eval-action ()

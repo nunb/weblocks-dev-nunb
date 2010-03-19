@@ -1,0 +1,1659 @@
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1259136806 -3600
+# Node ID 85c416441d4244b2a6531222c6133af6682a944b
+# Parent  a25c651e29011a88d24756230ea633461ab9c9eb
+Changes to forms processing and request deserialization so that we can run the same app-code in -stable and -dev
+
+diff -r a25c651e2901 -r 85c416441d42 src/snippets/html-utils.lisp
+--- a/src/snippets/html-utils.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/snippets/html-utils.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -51,9 +51,9 @@
+                         (:input :name *action-string* :type "hidden" :value ,action-code))))))
+        (log-form ,action-code :id ,id :class ,class))))
+ 
+-(defmacro with-html-form-change-fieldset-extra-tags ((method-type action &key id class enctype (use-ajax-p t) extra-submit-code (form-prefix-body nil)				       
++(defmacro with-html-form-no-fieldset-extra-tags ((method-type action &key id class enctype (use-ajax-p t) extra-submit-code (form-prefix-body nil)				       
+                           (submit-fn "initiateFormAction(\"~A\", $(this), \"~A\")")) &body body)
+-  "Transforms to cl-who (:form) with standard form code (AJAX support, actions, etc.)"
++  "Same as above, just no with-extra-tags"
+   (let ((action-code (gensym)))
+     `(let ((,action-code (function-or-action->action ,action)))
+        (with-html
+diff -r a25c651e2901 -r 85c416441d42 src/views/dataview.lisp
+--- a/src/views/dataview.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/views/dataview.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -2,7 +2,10 @@
+ (in-package :weblocks)
+ 
+ (export '(data data-view data-view-field data-scaffold
+-	  text-presentation highlight-regex-matches))
++	  text-presentation text-presentation-mixin
++          text-presentation-mixin-format-string
++          *text-presentation-mixin-default-format-string*
++	  highlight-regex-matches *presentation-dom-id*))
+ 
+ ;;; Data view
+ (defclass data-view (view)
+@@ -18,8 +21,23 @@
+ (defclass data-scaffold (scaffold)
+   ())
+ 
++(defparameter *text-presentation-mixin-default-format-string* "~A")
++
++;;; Text mixin
++(defclass text-presentation-mixin ()
++  ((format-string :accessor text-presentation-mixin-format-string
++                  :initform *text-presentation-mixin-default-format-string*
++                  :initarg :format-string
++                  :documentation "A format string used to print text
++                  value."))
++  (:documentation "A mixin for presentations that format strings."))
++
++(defmethod text-presentation-mixin-format-string ((presentation null))
++  "Convenience method, useful e.g. for testing."
++  *text-presentation-mixin-default-format-string*)
++
+ ;;; Presentation
+-(defclass text-presentation (presentation)
++(defclass text-presentation (presentation text-presentation-mixin)
+   ()
+   (:documentation "A default presentation that renders values as
+   text."))
+@@ -42,26 +60,36 @@
+ 			 (attributize-name (object-class-name obj)))
+ 	  (with-extra-tags
+ 	    (htm
+-	     (:h1 (fmt (view-caption view)
+-		       (humanize-name (object-class-name obj))))
++	     (unless (empty-p (view-caption view))
++	       (htm (:h1 (fmt (view-caption view)
++			      (humanize-name (object-class-name obj))))))
+ 	     (safe-apply fields-prefix-fn view obj args)
+ 	     (:ul (apply body-fn view obj args))
+ 	     (safe-apply fields-suffix-fn view obj args))))))
+ 
++
+ (defmethod render-view-field ((field data-view-field) (view data-view)
+ 			      widget presentation value obj
+-			      &rest args)
++			      &rest args &key field-info &allow-other-keys)
+   (with-html
+-    (:li :class (attributize-name (view-field-slot-name field))
+-	 (:span :class (concatenate 'string "label "
+-				    (attributize-presentation
+-				     (view-field-presentation field)))
+-		(str (view-field-label field)) ":&nbsp;")
++    (:li :class (if field-info
++                  (attributize-view-field-name field-info)
++                  (attributize-name (view-field-slot-name field)))
++	 (unless (empty-p (view-field-label field))
++	   (htm (:span :class (concatenate 'string "label "
++					   (attributize-presentation
++					    (view-field-presentation field)))
++		       (str (view-field-label field)) ":&nbsp;")))
+ 	 (apply #'render-view-field-value
+ 		value presentation
+ 		field view widget obj
+ 		args))))
+ 
++(defvar *presentation-dom-id* nil "DOM id of the currently rendered
++  presentation object. If bound during rendering (for example, in
++  an :around method for render-object-view, will be used by the various
++  functions that render form elements..")
++
+ (defmethod render-view-field-value (value (presentation text-presentation)
+ 				    field view widget obj &rest args
+ 				    &key highlight &allow-other-keys)
+@@ -69,7 +97,7 @@
+     (with-html
+       (:span :class "value"
+ 	     (str (if highlight
+-		      (highlight-regex-matches printed-value highlight)
++		      (highlight-regex-matches printed-value highlight presentation)
+ 		      (escape-for-html printed-value)))))))
+ 
+ (defmethod render-view-field-value ((value null) (presentation text-presentation)
+@@ -81,7 +109,7 @@
+       (with-html
+ 	(:span :class "value missing" "Not Specified"))))
+ 
+-(defun highlight-regex-matches (item highlight)
++(defun highlight-regex-matches (item highlight &optional presentation)
+   "This function highlights regex matches in text by wrapping them in
+ HTML 'string' tag. The complexity arises from the need to escape HTML
+ to prevent XSS attacks. If we simply wrap all matches in 'strong' tags
+@@ -94,7 +122,8 @@
+ 		       for match = (subseq item j k)
+ 		    collect (escape-for-html (subseq item i j)) into matches
+ 		    when (not (equalp match ""))
+-		         collect (format nil "<strong>~A</strong>"
++		         collect (format nil (format nil "<strong>~A</strong>"
++                                                     (text-presentation-mixin-format-string presentation))
+ 					 (escape-for-html match))
+ 		           into matches
+ 		    when (null rest) collect (escape-for-html (subseq item k (length item))) into matches
+@@ -103,8 +132,8 @@
+ 					(list (escape-for-html item))))))))
+ 
+ (defmethod print-view-field-value (value presentation field view widget obj &rest args)
+-  (declare (ignore presentation obj view field args))
+-  (format nil "~A" value))
++  (declare (ignore obj view field args))
++  (format nil (text-presentation-mixin-format-string presentation) value))
+ 
+ (defmethod print-view-field-value ((value symbol) presentation field view widget obj &rest args)
+   (declare (ignore presentation obj view field args))
+diff -r a25c651e2901 -r 85c416441d42 src/views/formview/formview.lisp
+--- a/src/views/formview/formview.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/views/formview/formview.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -2,17 +2,18 @@
+ (in-package :weblocks)
+ 
+ (export '(*form-default-error-summary-threshold*
+-	  *required-field-message* form form-view
+-	  form-view-error-summary-threshold form-view-use-ajax-p
+-	  form-view-default-method form-view-default-enctype
+-	  form-view-default-action form-view-persist-p form-view-focus-p form-view-satisfies
+-	  form-view-buttons form-view-field-writer-mixin form-view-field
+-	  form-view-field-parser form-view-field-satisfies
+-	  form-view-field-writer form-view-field-required-p mixin-form
+-	  mixin-form-view-field mixin-form-view-field-persist-p
+-	  *max-raw-input-length* input-presentation-max-length form-presentation
+-	  input input-presentation render-validation-summary
+-	  render-form-view-buttons form-field-intermediate-value))
++          *required-field-message* form form-view
++          form-view-error-summary-threshold form-view-use-ajax-p
++          form-view-default-method form-view-default-enctype
++          form-view-default-action form-view-persist-p form-view-focus-p
++          form-view-satisfies form-view-buttons form-view-field-writer-mixin
++          form-view-field form-view-field-parser form-view-field-satisfies
++          form-view-field-writer form-view-field-required-p
++          form-view-field-required-error-msg mixin-form mixin-form-view-field
++          mixin-form-view-field-persist-p *max-raw-input-length*
++          input-presentation-max-length form-presentation input
++          input-presentation render-validation-summary render-form-view-buttons
++          form-field-intermediate-value))
+ 
+ ;;; Default initialization parameters
+ (defparameter *form-default-error-summary-threshold* 15
+@@ -102,7 +103,14 @@
+ 	   :documentation "If this slot is bound to a function object,
+ 	   the function will be called with a new slot value and the
+ 	   object being rendered as arguments. If the slot is not
+-	   bound, '(setf slot-value)' will be used."))
++	   bound, '(setf slot-value)' will be used.")
++   (delayed-write-p :initarg :delayed-write-p
++		    :initform nil
++		    :accessor form-view-field-writer-delayed-p
++		    :documentation "If this slot is set to t, then the
++writer will get called after the object has been persisted. This is useful
++for updating relations, where objects need to be assigned ids and stored
++before relations can be updated."))
+   (:documentation "A writer slot mixin"))
+ 
+ (defclass form-view-field (inline-view-field form-view-field-writer-mixin)
+@@ -127,9 +135,25 @@
+ 	      :initarg :requiredp
+ 	      :accessor form-view-field-required-p
+ 	      :documentation "A predicate which determines whether the
+-	      field is required."))
++	      field is required.")
++   (required-error-msg :initform nil
++                       :initarg :required-error-msg
++                       :accessor form-view-field-required-error-msg
++                       :documentation "If this value isn't nil, it is
++                       presented to the user when the field is
++                       required and missing from the input
++                       data. Otherwise, the standard required error
++                       message is presented."))
+   (:documentation "A field class of the form view."))
+ 
++(defun get-required-error-msg (form-view-field)
++  "Returns an error message for a missing required field."
++  (if (form-view-field-required-error-msg form-view-field)
++      (form-view-field-required-error-msg form-view-field)
++      (format nil *required-field-message*
++              (humanize-name
++               (view-field-label form-view-field)))))
++
+ (defclass mixin-form-view-field (mixin-view-field form-view-field-writer-mixin)
+   ((persistp :initarg :persistp
+ 	     :accessor mixin-form-view-field-persist-p
+@@ -160,7 +184,7 @@
+ (defparameter *max-raw-input-length* 40
+   "Default maximum allowed input length for input fields.")
+ 
+-(defclass input-presentation (form-presentation)
++(defclass input-presentation (form-presentation text-presentation-mixin)
+   ((max-length :initform *max-raw-input-length*
+ 	       :initarg :max-length
+ 	       :accessor input-presentation-max-length
+@@ -202,7 +226,7 @@
+ 				   (str (format nil "~A" (cdr err))))))
+ 			      field-errors))))))))))
+ 
+-(defgeneric render-form-view-buttons (view obj widget &rest args)
++(defgeneric render-form-view-buttons (view obj widget &rest args &key buttons &allow-other-keys)
+   (:documentation
+    "Renders buttons specified view 'buttons' slot of the 'form-view'
+ object. By default, this method renders 'Submit' and 'Cancel' buttons
+@@ -210,14 +234,21 @@
+ differently.
+ 
+ 'view' - the view being rendered.
+-'obj' - the object being rendered.")
+-  (:method ((view form-view) obj widget &rest args)
++'obj' - the object being rendered.
++'buttons' - same as form-view-buttons, can be used to override
++form-view-buttons for a given view.")
++  (:method ((view form-view) obj widget &rest args &key form-view-buttons &allow-other-keys)
+     (declare (ignore obj args))
+     (flet ((find-button (name)
+ 	     (ensure-list
+-	      (find name (form-view-buttons view)
+-		    :key (lambda (item)
+-			   (car (ensure-list item)))))))
++	      (and (if form-view-buttons
++                       (find name form-view-buttons
++                             :key (lambda (item)
++                                    (car (ensure-list item))))
++                       t)
++                   (find name (form-view-buttons view)
++                         :key (lambda (item)
++                                (car (ensure-list item))))))))
+       (with-html
+ 	(:div :class "submit"
+ 	      (let ((submit (find-button :submit)))
+@@ -274,38 +305,49 @@
+ 			      :use-ajax-p (form-view-use-ajax-p view))
+ 	(write-string form-body *weblocks-output-stream*)))
+     (when (form-view-focus-p view)
+-        (send-script (ps* `(.focus-first-element ($ ,form-id)))))))
++        (send-script (ps* `((@ ($ ,form-id) focus-first-element)))))))
+ 
+ (defmethod render-view-field ((field form-view-field) (view form-view)
+ 			      widget presentation value obj 
+-			      &rest args &key validation-errors &allow-other-keys)
+-  (let* ((attribute-slot-name (attributize-name (view-field-slot-name field)))
++			      &rest args &key validation-errors field-info &allow-other-keys)
++  (declare (special *presentation-dom-id*))
++  (let* ((attributized-slot-name (if field-info
++                                   (attributize-view-field-name field-info)
++                                   (attributize-name (view-field-slot-name field))))
+ 	 (validation-error (assoc field validation-errors))
+-	 (field-class (concatenate 'string attribute-slot-name
+-				   (when validation-error " item-not-validated"))))
++	 (field-class (concatenate 'string (aif attributized-slot-name it "")
++				   (when validation-error " item-not-validated")))
++         (*presentation-dom-id* (gen-id)))
+     (with-html
+       (:li :class field-class
+ 	   (:label :class (attributize-presentation
+ 			   (view-field-presentation field))
++                   :for *presentation-dom-id*
+ 		   (:span :class "slot-name"
+ 			  (:span :class "extra"
+-				 (str (view-field-label field)) ":&nbsp;"
++				 (unless (empty-p (view-field-label field))
++				   (str (view-field-label field))
++				   (str ":&nbsp;"))
+ 				 (when (form-view-field-required-p field)
+-				   (htm (:em :class "required-slot" "(required)&nbsp;")))))
+-		   (apply #'render-view-field-value
+-			  value presentation
+-			  field view widget obj
+-			  args)
+-		   (when validation-error
+-		     (htm (:p :class "validation-error"
+-			      (:em
+-			       (:span :class "validation-error-heading" "Error:&nbsp;")
+-			       (str (format nil "~A" (cdr validation-error))))))))))))
++				   (htm (:em :class "required-slot" "(required)&nbsp;"))))))
++           (apply #'render-view-field-value
++                  value presentation
++                  field view widget obj
++                  :field-info field-info
++                  args)
++           (when validation-error
++             (htm (:p :class "validation-error"
++                      (:em
++                        (:span :class "validation-error-heading" "Error:&nbsp;")
++                        (str (format nil "~A" (cdr validation-error)))))))))))
+ 
+ (defmethod render-view-field-value (value (presentation input-presentation)
+ 				    field view widget obj
+-				    &rest args &key intermediate-values &allow-other-keys)
+-  (let ((attributized-slot-name (attributize-name (view-field-slot-name field))))
++				    &rest args &key intermediate-values field-info &allow-other-keys)
++  (declare (special *presentation-dom-id*))
++  (let ((attributized-slot-name (if field-info
++                                  (attributize-view-field-name field-info)
++                                  (attributize-name (view-field-slot-name field)))))
+     (multiple-value-bind (intermediate-value intermediate-value-p)
+ 	(form-field-intermediate-value field intermediate-values)
+       (with-html
+@@ -313,7 +355,8 @@
+ 		  :value (if intermediate-value-p
+ 			     intermediate-value
+ 			     (apply #'print-view-field-value value presentation field view widget obj args))
+-		  :maxlength (input-presentation-max-length presentation))))))
++		  :maxlength (input-presentation-max-length presentation)
++		  :id *presentation-dom-id*)))))
+ 
+ (defmethod print-view-field-value ((value null) (presentation input-presentation)
+ 				   field view widget obj &rest args)
+diff -r a25c651e2901 -r 85c416441d42 src/views/formview/parser.lisp
+--- a/src/views/formview/parser.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/views/formview/parser.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -64,9 +64,11 @@
+ (defmethod parse-view-field-value ((parser text-parser) value obj
+ 				   (view form-view) (field form-view-field) &rest args)
+   (declare (ignore args))
+-  (if (text-parser-matches parser)
+-      (when (ppcre:all-matches (text-parser-matches parser) value)
+-	(values t (text-input-present-p value) value))
++  (if (and (text-parser-matches parser)
++           (text-input-present-p value))
++      (let ((res (ppcre:all-matches (text-parser-matches parser) value)))
++        (when (and res (= (length res) 2))
++            (values t (text-input-present-p value) value)))
+       (values t (text-input-present-p value) value)))
+ 
+ (defun text-input-present-p (value)
+diff -r a25c651e2901 -r 85c416441d42 src/views/formview/request-deserialization.lisp
+--- a/src/views/formview/request-deserialization.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/views/formview/request-deserialization.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -38,21 +38,18 @@
+ 			(lambda (field-info)
+ 			  (let* ((field (field-info-field field-info))
+ 				 (obj (field-info-object field-info))
+-				 (field-key (attributize-name (view-field-slot-name field)))
++				 (field-key (attributize-view-field-name field-info))
+ 				 (field-value (request-parameter-for-presentation field-key
+                                                                                   (view-field-presentation field))))
+ 			    (when (typep (view-field-presentation field) 'form-presentation)
+ 			      (multiple-value-bind (parsedp presentp parsed-value)
+ 				  (apply #'parse-view-field-value (form-view-field-parser field)
+ 					 field-value obj view field
+-					 args)
++					 :field-info field-info args)
+ 				(if parsedp
+ 				    (if (not presentp)
+ 					(if (form-view-field-required-p field)
+-					    (push (cons field
+-							(format nil *required-field-message*
+-								(humanize-name
+-								 (view-field-label field))))
++					    (push (cons field (get-required-error-msg field))
+ 						  errors)
+ 					    (push (cons field-info nil) results))
+ 					(push (cons field-info parsed-value) results))
+@@ -77,7 +74,7 @@
+ 			   (funcall writer value obj)
+ 			   (setf (slot-value obj (view-field-slot-name field))
+ 				 value))))))
+-	     (deserialize-object-from-parsed-values (parsed-values)
++	     (deserialize-object-from-parsed-values (parsed-values &key write-delayed)
+ 	       "Accepts an an association list of field-info
+                structures and parsed-values, and records each parsed
+                value in the corresponding field's object slot."
+@@ -87,7 +84,11 @@
+ 			 (let ((field (field-info-field field-info))
+ 			       (obj (field-info-object field-info)))
+ 			   (when (typep (view-field-presentation field) 'form-presentation)
+-			     (write-value field parsed-value obj)))))
++			     (if (form-view-field-writer-delayed-p field)
++				 (when write-delayed
++				   (write-value field parsed-value obj))
++				 (unless write-delayed
++				   (write-value field parsed-value obj)))))))
+ 		     parsed-values))
+ 	     (persist-object-view (obj view field-info-list)
+ 	       "Persists an object view to the backend store. If the
+@@ -120,6 +121,7 @@
+ 		    (deserialize-object-from-parsed-values results)
+ 		    (when (form-view-persist-p view)
+ 		      (persist-object-view obj view (mapcar #'car results)))
++		    (deserialize-object-from-parsed-values results :write-delayed t)
+ 		    t)
+ 		  (values nil errors)))
+ 	    (values nil results))))))
+@@ -138,7 +140,7 @@
+ 	   (let ((field (field-info-field field-info)))
+ 	     (when (typep (view-field-presentation field) 'form-presentation)
+ 	       (let* ((slot-name (view-field-slot-name field))
+-		      (slot-key (attributize-name slot-name))
++		      (slot-key (attributize-view-field-name field-info))
+ 		      (request-slot-value (request-parameter-for-presentation
+ 					   slot-key (view-field-presentation field))))
+ 		 (cons field request-slot-value)))))
+diff -r a25c651e2901 -r 85c416441d42 src/widgets/data-editor.lisp
+--- a/src/widgets/data-editor.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/widgets/data-editor.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -3,7 +3,8 @@
+ 
+ (export '(data-editor dataform-data dataform-class-store
+ 	  dataform-on-cancel dataform-on-success
+-	  dataform-allow-close-p dataform-on-close))
++	  dataform-allow-close-p dataform-on-close
++	  data-editor-form-buttons render-dataform-data-buttons))
+ 
+ (defwidget data-editor ()
+   ((data :accessor dataform-data
+@@ -42,7 +43,14 @@
+ 	     :documentation "An optional callback function with one
+ 	     argument (the dataform widget). Called when the user
+ 	     clicks on the close button. Note that the close button is
+-	     only rendered if 'allow-close-p' is true."))
++	     only rendered if 'allow-close-p' is true.")
++   (form-buttons :initform nil
++                 :initarg :form-buttons
++                 :accessor data-editor-form-buttons
++                 :documentation "Same as `form-view-buttons'. If not null,
++	    used to override the value of `form-view-buttons' for the
++	    view being rendered (by passing :form-view-buttons arg to
++	    the view)."))
+   (:documentation "The details of stateful handling of forms
+   manipulating objects.  Mix this in to drop-in your own replacement
+   for `dataform', when the view DSL isn't expressive enough and you
+@@ -54,6 +62,15 @@
+     (setf (dataform-class-store obj)
+ 	  (object-store (dataform-data obj)))))
+ 
++(defgeneric (setf dataform-ui-state) (new-value data-editor)
++  (:documentation "When a dataform or similar, change DATA-EDITOR's
++  state to NEW-VALUE, which should be :data or :form.")
++  (:method (new-value (wij data-editor))
++    (style-warn 'misunderstood-action
++      :action (format nil "changed a dataform's state to ~S" new-value)
++      :missing "`dataform-ui-state' accessor implementation")
++    new-value))
++
+ (defgeneric render-dataform-data-buttons (dataform data)
+   (:documentation "Render the buttons and links appearing with the
+   data view on a dataform."))
+@@ -64,13 +81,13 @@
+   (with-html
+     (:div :class "submit"
+ 	  (render-link (make-action
+-			(f_% (setf (slot-value obj 'ui-state) :form)))
+-		       #!"Modify"
++			(f_% (setf (dataform-ui-state obj) :form)))
++		       "Modify"
+ 		       :class "modify")
+ 	  (when (and (dataform-allow-close-p obj)
+ 		     (dataform-on-close obj))
+ 	    (str "&nbsp;")
+ 	    (render-link (make-action
+ 			  (f_% (funcall (dataform-on-close obj) obj)))
+-			 #!"Close"
++			 "Close"
+ 			 :class "close")))))
+diff -r a25c651e2901 -r 85c416441d42 src/widgets/dataform.lisp
+--- a/src/widgets/dataform.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/widgets/dataform.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -3,7 +3,7 @@
+ 
+ (export '(dataform dataform-data-view dataform-form-view
+ 	  render-dataform render-dataform-data render-dataform-form
+-	  annihilate-dataform dataform-submit-action))
++	  annihilate-dataform dataform-submit-action dataform-ui-state))
+ 
+ (defwidget dataform (data-editor)
+   ((data-view :accessor dataform-data-view
+@@ -19,6 +19,7 @@
+ 	      into form view. If 'form-view' isn't provided, the
+ 	      scaffold view will be used by default.")
+    (ui-state :initform :data
++	     :accessor dataform-ui-state
+ 	     :initarg :ui-state
+ 	     :documentation "Current internal state of the
+ 	     widget. Normally :data when rendering via 'render-data'
+@@ -67,7 +68,7 @@
+ 'args' - keyword arguments passed to functions internally. See
+ 'render-data', 'render-form', etc.")
+   (:method ((obj dataform) data &rest args)
+-    (ecase (slot-value obj 'ui-state)
++    (ecase (dataform-ui-state obj)
+       (:data (apply #'render-dataform-data obj data (dataform-data-view obj) args))
+       (:form (apply #'render-dataform-form obj data (dataform-form-view obj) args)))))
+ 
+@@ -103,7 +104,7 @@
+ 					    (apply #'dataform-submit-action obj data args)
+ 					  (if success
+ 					      (progn
+-						(mark-dirty obj :putp t)
++						(mark-dirty obj :propagate t)
+ 						(safe-funcall (dataform-on-success obj) obj)
+ 						(setf break-out t))
+ 					      (progn
+@@ -117,10 +118,11 @@
+ 				      (when break-out
+ 					(setf (slot-value obj 'validation-errors) nil)
+ 					(setf (slot-value obj 'intermediate-form-values) nil)
+-					(setf (slot-value obj 'ui-state) :data))))))
++					(setf (dataform-ui-state obj) :data))))))
+ 	   :validation-errors (slot-value obj 'validation-errors)
+ 	   :intermediate-values (slot-value obj 'intermediate-form-values)
+ 	   :widget obj
++           :form-view-buttons (data-editor-form-buttons obj)
+ 	   args)))
+ 
+ (defgeneric dataform-submit-action (obj data &rest args)
+@@ -135,3 +137,9 @@
+ 	   :class-store (dataform-class-store obj)
+ 	   args)))
+ 
++;; Dependencies
++(defmethod dependencies append ((obj dataform))
++  (dependencies
++   (ecase (dataform-ui-state obj)
++     (:form (dataform-form-view obj))
++     (:data (dataform-data-view obj)))))
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1259136806 -3600
+# Node ID 85c416441d4244b2a6531222c6133af6682a944b
+# Parent  a25c651e29011a88d24756230ea633461ab9c9eb
+Changes to forms processing and request deserialization so that we can run the same app-code in -stable and -dev
+
+diff -r a25c651e2901 -r 85c416441d42 src/snippets/html-utils.lisp
+--- a/src/snippets/html-utils.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/snippets/html-utils.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -51,9 +51,9 @@
+                         (:input :name *action-string* :type "hidden" :value ,action-code))))))
+        (log-form ,action-code :id ,id :class ,class))))
+ 
+-(defmacro with-html-form-change-fieldset-extra-tags ((method-type action &key id class enctype (use-ajax-p t) extra-submit-code (form-prefix-body nil)				       
++(defmacro with-html-form-no-fieldset-extra-tags ((method-type action &key id class enctype (use-ajax-p t) extra-submit-code (form-prefix-body nil)				       
+                           (submit-fn "initiateFormAction(\"~A\", $(this), \"~A\")")) &body body)
+-  "Transforms to cl-who (:form) with standard form code (AJAX support, actions, etc.)"
++  "Same as above, just no with-extra-tags"
+   (let ((action-code (gensym)))
+     `(let ((,action-code (function-or-action->action ,action)))
+        (with-html
+diff -r a25c651e2901 -r 85c416441d42 src/views/dataview.lisp
+--- a/src/views/dataview.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/views/dataview.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -2,7 +2,10 @@
+ (in-package :weblocks)
+ 
+ (export '(data data-view data-view-field data-scaffold
+-	  text-presentation highlight-regex-matches))
++	  text-presentation text-presentation-mixin
++          text-presentation-mixin-format-string
++          *text-presentation-mixin-default-format-string*
++	  highlight-regex-matches *presentation-dom-id*))
+ 
+ ;;; Data view
+ (defclass data-view (view)
+@@ -18,8 +21,23 @@
+ (defclass data-scaffold (scaffold)
+   ())
+ 
++(defparameter *text-presentation-mixin-default-format-string* "~A")
++
++;;; Text mixin
++(defclass text-presentation-mixin ()
++  ((format-string :accessor text-presentation-mixin-format-string
++                  :initform *text-presentation-mixin-default-format-string*
++                  :initarg :format-string
++                  :documentation "A format string used to print text
++                  value."))
++  (:documentation "A mixin for presentations that format strings."))
++
++(defmethod text-presentation-mixin-format-string ((presentation null))
++  "Convenience method, useful e.g. for testing."
++  *text-presentation-mixin-default-format-string*)
++
+ ;;; Presentation
+-(defclass text-presentation (presentation)
++(defclass text-presentation (presentation text-presentation-mixin)
+   ()
+   (:documentation "A default presentation that renders values as
+   text."))
+@@ -42,26 +60,36 @@
+ 			 (attributize-name (object-class-name obj)))
+ 	  (with-extra-tags
+ 	    (htm
+-	     (:h1 (fmt (view-caption view)
+-		       (humanize-name (object-class-name obj))))
++	     (unless (empty-p (view-caption view))
++	       (htm (:h1 (fmt (view-caption view)
++			      (humanize-name (object-class-name obj))))))
+ 	     (safe-apply fields-prefix-fn view obj args)
+ 	     (:ul (apply body-fn view obj args))
+ 	     (safe-apply fields-suffix-fn view obj args))))))
+ 
++
+ (defmethod render-view-field ((field data-view-field) (view data-view)
+ 			      widget presentation value obj
+-			      &rest args)
++			      &rest args &key field-info &allow-other-keys)
+   (with-html
+-    (:li :class (attributize-name (view-field-slot-name field))
+-	 (:span :class (concatenate 'string "label "
+-				    (attributize-presentation
+-				     (view-field-presentation field)))
+-		(str (view-field-label field)) ":&nbsp;")
++    (:li :class (if field-info
++                  (attributize-view-field-name field-info)
++                  (attributize-name (view-field-slot-name field)))
++	 (unless (empty-p (view-field-label field))
++	   (htm (:span :class (concatenate 'string "label "
++					   (attributize-presentation
++					    (view-field-presentation field)))
++		       (str (view-field-label field)) ":&nbsp;")))
+ 	 (apply #'render-view-field-value
+ 		value presentation
+ 		field view widget obj
+ 		args))))
+ 
++(defvar *presentation-dom-id* nil "DOM id of the currently rendered
++  presentation object. If bound during rendering (for example, in
++  an :around method for render-object-view, will be used by the various
++  functions that render form elements..")
++
+ (defmethod render-view-field-value (value (presentation text-presentation)
+ 				    field view widget obj &rest args
+ 				    &key highlight &allow-other-keys)
+@@ -69,7 +97,7 @@
+     (with-html
+       (:span :class "value"
+ 	     (str (if highlight
+-		      (highlight-regex-matches printed-value highlight)
++		      (highlight-regex-matches printed-value highlight presentation)
+ 		      (escape-for-html printed-value)))))))
+ 
+ (defmethod render-view-field-value ((value null) (presentation text-presentation)
+@@ -81,7 +109,7 @@
+       (with-html
+ 	(:span :class "value missing" "Not Specified"))))
+ 
+-(defun highlight-regex-matches (item highlight)
++(defun highlight-regex-matches (item highlight &optional presentation)
+   "This function highlights regex matches in text by wrapping them in
+ HTML 'string' tag. The complexity arises from the need to escape HTML
+ to prevent XSS attacks. If we simply wrap all matches in 'strong' tags
+@@ -94,7 +122,8 @@
+ 		       for match = (subseq item j k)
+ 		    collect (escape-for-html (subseq item i j)) into matches
+ 		    when (not (equalp match ""))
+-		         collect (format nil "<strong>~A</strong>"
++		         collect (format nil (format nil "<strong>~A</strong>"
++                                                     (text-presentation-mixin-format-string presentation))
+ 					 (escape-for-html match))
+ 		           into matches
+ 		    when (null rest) collect (escape-for-html (subseq item k (length item))) into matches
+@@ -103,8 +132,8 @@
+ 					(list (escape-for-html item))))))))
+ 
+ (defmethod print-view-field-value (value presentation field view widget obj &rest args)
+-  (declare (ignore presentation obj view field args))
+-  (format nil "~A" value))
++  (declare (ignore obj view field args))
++  (format nil (text-presentation-mixin-format-string presentation) value))
+ 
+ (defmethod print-view-field-value ((value symbol) presentation field view widget obj &rest args)
+   (declare (ignore presentation obj view field args))
+diff -r a25c651e2901 -r 85c416441d42 src/views/formview/formview.lisp
+--- a/src/views/formview/formview.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/views/formview/formview.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -2,17 +2,18 @@
+ (in-package :weblocks)
+ 
+ (export '(*form-default-error-summary-threshold*
+-	  *required-field-message* form form-view
+-	  form-view-error-summary-threshold form-view-use-ajax-p
+-	  form-view-default-method form-view-default-enctype
+-	  form-view-default-action form-view-persist-p form-view-focus-p form-view-satisfies
+-	  form-view-buttons form-view-field-writer-mixin form-view-field
+-	  form-view-field-parser form-view-field-satisfies
+-	  form-view-field-writer form-view-field-required-p mixin-form
+-	  mixin-form-view-field mixin-form-view-field-persist-p
+-	  *max-raw-input-length* input-presentation-max-length form-presentation
+-	  input input-presentation render-validation-summary
+-	  render-form-view-buttons form-field-intermediate-value))
++          *required-field-message* form form-view
++          form-view-error-summary-threshold form-view-use-ajax-p
++          form-view-default-method form-view-default-enctype
++          form-view-default-action form-view-persist-p form-view-focus-p
++          form-view-satisfies form-view-buttons form-view-field-writer-mixin
++          form-view-field form-view-field-parser form-view-field-satisfies
++          form-view-field-writer form-view-field-required-p
++          form-view-field-required-error-msg mixin-form mixin-form-view-field
++          mixin-form-view-field-persist-p *max-raw-input-length*
++          input-presentation-max-length form-presentation input
++          input-presentation render-validation-summary render-form-view-buttons
++          form-field-intermediate-value))
+ 
+ ;;; Default initialization parameters
+ (defparameter *form-default-error-summary-threshold* 15
+@@ -102,7 +103,14 @@
+ 	   :documentation "If this slot is bound to a function object,
+ 	   the function will be called with a new slot value and the
+ 	   object being rendered as arguments. If the slot is not
+-	   bound, '(setf slot-value)' will be used."))
++	   bound, '(setf slot-value)' will be used.")
++   (delayed-write-p :initarg :delayed-write-p
++		    :initform nil
++		    :accessor form-view-field-writer-delayed-p
++		    :documentation "If this slot is set to t, then the
++writer will get called after the object has been persisted. This is useful
++for updating relations, where objects need to be assigned ids and stored
++before relations can be updated."))
+   (:documentation "A writer slot mixin"))
+ 
+ (defclass form-view-field (inline-view-field form-view-field-writer-mixin)
+@@ -127,9 +135,25 @@
+ 	      :initarg :requiredp
+ 	      :accessor form-view-field-required-p
+ 	      :documentation "A predicate which determines whether the
+-	      field is required."))
++	      field is required.")
++   (required-error-msg :initform nil
++                       :initarg :required-error-msg
++                       :accessor form-view-field-required-error-msg
++                       :documentation "If this value isn't nil, it is
++                       presented to the user when the field is
++                       required and missing from the input
++                       data. Otherwise, the standard required error
++                       message is presented."))
+   (:documentation "A field class of the form view."))
+ 
++(defun get-required-error-msg (form-view-field)
++  "Returns an error message for a missing required field."
++  (if (form-view-field-required-error-msg form-view-field)
++      (form-view-field-required-error-msg form-view-field)
++      (format nil *required-field-message*
++              (humanize-name
++               (view-field-label form-view-field)))))
++
+ (defclass mixin-form-view-field (mixin-view-field form-view-field-writer-mixin)
+   ((persistp :initarg :persistp
+ 	     :accessor mixin-form-view-field-persist-p
+@@ -160,7 +184,7 @@
+ (defparameter *max-raw-input-length* 40
+   "Default maximum allowed input length for input fields.")
+ 
+-(defclass input-presentation (form-presentation)
++(defclass input-presentation (form-presentation text-presentation-mixin)
+   ((max-length :initform *max-raw-input-length*
+ 	       :initarg :max-length
+ 	       :accessor input-presentation-max-length
+@@ -202,7 +226,7 @@
+ 				   (str (format nil "~A" (cdr err))))))
+ 			      field-errors))))))))))
+ 
+-(defgeneric render-form-view-buttons (view obj widget &rest args)
++(defgeneric render-form-view-buttons (view obj widget &rest args &key buttons &allow-other-keys)
+   (:documentation
+    "Renders buttons specified view 'buttons' slot of the 'form-view'
+ object. By default, this method renders 'Submit' and 'Cancel' buttons
+@@ -210,14 +234,21 @@
+ differently.
+ 
+ 'view' - the view being rendered.
+-'obj' - the object being rendered.")
+-  (:method ((view form-view) obj widget &rest args)
++'obj' - the object being rendered.
++'buttons' - same as form-view-buttons, can be used to override
++form-view-buttons for a given view.")
++  (:method ((view form-view) obj widget &rest args &key form-view-buttons &allow-other-keys)
+     (declare (ignore obj args))
+     (flet ((find-button (name)
+ 	     (ensure-list
+-	      (find name (form-view-buttons view)
+-		    :key (lambda (item)
+-			   (car (ensure-list item)))))))
++	      (and (if form-view-buttons
++                       (find name form-view-buttons
++                             :key (lambda (item)
++                                    (car (ensure-list item))))
++                       t)
++                   (find name (form-view-buttons view)
++                         :key (lambda (item)
++                                (car (ensure-list item))))))))
+       (with-html
+ 	(:div :class "submit"
+ 	      (let ((submit (find-button :submit)))
+@@ -274,38 +305,49 @@
+ 			      :use-ajax-p (form-view-use-ajax-p view))
+ 	(write-string form-body *weblocks-output-stream*)))
+     (when (form-view-focus-p view)
+-        (send-script (ps* `(.focus-first-element ($ ,form-id)))))))
++        (send-script (ps* `((@ ($ ,form-id) focus-first-element)))))))
+ 
+ (defmethod render-view-field ((field form-view-field) (view form-view)
+ 			      widget presentation value obj 
+-			      &rest args &key validation-errors &allow-other-keys)
+-  (let* ((attribute-slot-name (attributize-name (view-field-slot-name field)))
++			      &rest args &key validation-errors field-info &allow-other-keys)
++  (declare (special *presentation-dom-id*))
++  (let* ((attributized-slot-name (if field-info
++                                   (attributize-view-field-name field-info)
++                                   (attributize-name (view-field-slot-name field))))
+ 	 (validation-error (assoc field validation-errors))
+-	 (field-class (concatenate 'string attribute-slot-name
+-				   (when validation-error " item-not-validated"))))
++	 (field-class (concatenate 'string (aif attributized-slot-name it "")
++				   (when validation-error " item-not-validated")))
++         (*presentation-dom-id* (gen-id)))
+     (with-html
+       (:li :class field-class
+ 	   (:label :class (attributize-presentation
+ 			   (view-field-presentation field))
++                   :for *presentation-dom-id*
+ 		   (:span :class "slot-name"
+ 			  (:span :class "extra"
+-				 (str (view-field-label field)) ":&nbsp;"
++				 (unless (empty-p (view-field-label field))
++				   (str (view-field-label field))
++				   (str ":&nbsp;"))
+ 				 (when (form-view-field-required-p field)
+-				   (htm (:em :class "required-slot" "(required)&nbsp;")))))
+-		   (apply #'render-view-field-value
+-			  value presentation
+-			  field view widget obj
+-			  args)
+-		   (when validation-error
+-		     (htm (:p :class "validation-error"
+-			      (:em
+-			       (:span :class "validation-error-heading" "Error:&nbsp;")
+-			       (str (format nil "~A" (cdr validation-error))))))))))))
++				   (htm (:em :class "required-slot" "(required)&nbsp;"))))))
++           (apply #'render-view-field-value
++                  value presentation
++                  field view widget obj
++                  :field-info field-info
++                  args)
++           (when validation-error
++             (htm (:p :class "validation-error"
++                      (:em
++                        (:span :class "validation-error-heading" "Error:&nbsp;")
++                        (str (format nil "~A" (cdr validation-error)))))))))))
+ 
+ (defmethod render-view-field-value (value (presentation input-presentation)
+ 				    field view widget obj
+-				    &rest args &key intermediate-values &allow-other-keys)
+-  (let ((attributized-slot-name (attributize-name (view-field-slot-name field))))
++				    &rest args &key intermediate-values field-info &allow-other-keys)
++  (declare (special *presentation-dom-id*))
++  (let ((attributized-slot-name (if field-info
++                                  (attributize-view-field-name field-info)
++                                  (attributize-name (view-field-slot-name field)))))
+     (multiple-value-bind (intermediate-value intermediate-value-p)
+ 	(form-field-intermediate-value field intermediate-values)
+       (with-html
+@@ -313,7 +355,8 @@
+ 		  :value (if intermediate-value-p
+ 			     intermediate-value
+ 			     (apply #'print-view-field-value value presentation field view widget obj args))
+-		  :maxlength (input-presentation-max-length presentation))))))
++		  :maxlength (input-presentation-max-length presentation)
++		  :id *presentation-dom-id*)))))
+ 
+ (defmethod print-view-field-value ((value null) (presentation input-presentation)
+ 				   field view widget obj &rest args)
+diff -r a25c651e2901 -r 85c416441d42 src/views/formview/parser.lisp
+--- a/src/views/formview/parser.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/views/formview/parser.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -64,9 +64,11 @@
+ (defmethod parse-view-field-value ((parser text-parser) value obj
+ 				   (view form-view) (field form-view-field) &rest args)
+   (declare (ignore args))
+-  (if (text-parser-matches parser)
+-      (when (ppcre:all-matches (text-parser-matches parser) value)
+-	(values t (text-input-present-p value) value))
++  (if (and (text-parser-matches parser)
++           (text-input-present-p value))
++      (let ((res (ppcre:all-matches (text-parser-matches parser) value)))
++        (when (and res (= (length res) 2))
++            (values t (text-input-present-p value) value)))
+       (values t (text-input-present-p value) value)))
+ 
+ (defun text-input-present-p (value)
+diff -r a25c651e2901 -r 85c416441d42 src/views/formview/request-deserialization.lisp
+--- a/src/views/formview/request-deserialization.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/views/formview/request-deserialization.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -38,21 +38,18 @@
+ 			(lambda (field-info)
+ 			  (let* ((field (field-info-field field-info))
+ 				 (obj (field-info-object field-info))
+-				 (field-key (attributize-name (view-field-slot-name field)))
++				 (field-key (attributize-view-field-name field-info))
+ 				 (field-value (request-parameter-for-presentation field-key
+                                                                                   (view-field-presentation field))))
+ 			    (when (typep (view-field-presentation field) 'form-presentation)
+ 			      (multiple-value-bind (parsedp presentp parsed-value)
+ 				  (apply #'parse-view-field-value (form-view-field-parser field)
+ 					 field-value obj view field
+-					 args)
++					 :field-info field-info args)
+ 				(if parsedp
+ 				    (if (not presentp)
+ 					(if (form-view-field-required-p field)
+-					    (push (cons field
+-							(format nil *required-field-message*
+-								(humanize-name
+-								 (view-field-label field))))
++					    (push (cons field (get-required-error-msg field))
+ 						  errors)
+ 					    (push (cons field-info nil) results))
+ 					(push (cons field-info parsed-value) results))
+@@ -77,7 +74,7 @@
+ 			   (funcall writer value obj)
+ 			   (setf (slot-value obj (view-field-slot-name field))
+ 				 value))))))
+-	     (deserialize-object-from-parsed-values (parsed-values)
++	     (deserialize-object-from-parsed-values (parsed-values &key write-delayed)
+ 	       "Accepts an an association list of field-info
+                structures and parsed-values, and records each parsed
+                value in the corresponding field's object slot."
+@@ -87,7 +84,11 @@
+ 			 (let ((field (field-info-field field-info))
+ 			       (obj (field-info-object field-info)))
+ 			   (when (typep (view-field-presentation field) 'form-presentation)
+-			     (write-value field parsed-value obj)))))
++			     (if (form-view-field-writer-delayed-p field)
++				 (when write-delayed
++				   (write-value field parsed-value obj))
++				 (unless write-delayed
++				   (write-value field parsed-value obj)))))))
+ 		     parsed-values))
+ 	     (persist-object-view (obj view field-info-list)
+ 	       "Persists an object view to the backend store. If the
+@@ -120,6 +121,7 @@
+ 		    (deserialize-object-from-parsed-values results)
+ 		    (when (form-view-persist-p view)
+ 		      (persist-object-view obj view (mapcar #'car results)))
++		    (deserialize-object-from-parsed-values results :write-delayed t)
+ 		    t)
+ 		  (values nil errors)))
+ 	    (values nil results))))))
+@@ -138,7 +140,7 @@
+ 	   (let ((field (field-info-field field-info)))
+ 	     (when (typep (view-field-presentation field) 'form-presentation)
+ 	       (let* ((slot-name (view-field-slot-name field))
+-		      (slot-key (attributize-name slot-name))
++		      (slot-key (attributize-view-field-name field-info))
+ 		      (request-slot-value (request-parameter-for-presentation
+ 					   slot-key (view-field-presentation field))))
+ 		 (cons field request-slot-value)))))
+diff -r a25c651e2901 -r 85c416441d42 src/widgets/data-editor.lisp
+--- a/src/widgets/data-editor.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/widgets/data-editor.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -3,7 +3,8 @@
+ 
+ (export '(data-editor dataform-data dataform-class-store
+ 	  dataform-on-cancel dataform-on-success
+-	  dataform-allow-close-p dataform-on-close))
++	  dataform-allow-close-p dataform-on-close
++	  data-editor-form-buttons render-dataform-data-buttons))
+ 
+ (defwidget data-editor ()
+   ((data :accessor dataform-data
+@@ -42,7 +43,14 @@
+ 	     :documentation "An optional callback function with one
+ 	     argument (the dataform widget). Called when the user
+ 	     clicks on the close button. Note that the close button is
+-	     only rendered if 'allow-close-p' is true."))
++	     only rendered if 'allow-close-p' is true.")
++   (form-buttons :initform nil
++                 :initarg :form-buttons
++                 :accessor data-editor-form-buttons
++                 :documentation "Same as `form-view-buttons'. If not null,
++	    used to override the value of `form-view-buttons' for the
++	    view being rendered (by passing :form-view-buttons arg to
++	    the view)."))
+   (:documentation "The details of stateful handling of forms
+   manipulating objects.  Mix this in to drop-in your own replacement
+   for `dataform', when the view DSL isn't expressive enough and you
+@@ -54,6 +62,15 @@
+     (setf (dataform-class-store obj)
+ 	  (object-store (dataform-data obj)))))
+ 
++(defgeneric (setf dataform-ui-state) (new-value data-editor)
++  (:documentation "When a dataform or similar, change DATA-EDITOR's
++  state to NEW-VALUE, which should be :data or :form.")
++  (:method (new-value (wij data-editor))
++    (style-warn 'misunderstood-action
++      :action (format nil "changed a dataform's state to ~S" new-value)
++      :missing "`dataform-ui-state' accessor implementation")
++    new-value))
++
+ (defgeneric render-dataform-data-buttons (dataform data)
+   (:documentation "Render the buttons and links appearing with the
+   data view on a dataform."))
+@@ -64,13 +81,13 @@
+   (with-html
+     (:div :class "submit"
+ 	  (render-link (make-action
+-			(f_% (setf (slot-value obj 'ui-state) :form)))
+-		       #!"Modify"
++			(f_% (setf (dataform-ui-state obj) :form)))
++		       "Modify"
+ 		       :class "modify")
+ 	  (when (and (dataform-allow-close-p obj)
+ 		     (dataform-on-close obj))
+ 	    (str "&nbsp;")
+ 	    (render-link (make-action
+ 			  (f_% (funcall (dataform-on-close obj) obj)))
+-			 #!"Close"
++			 "Close"
+ 			 :class "close")))))
+diff -r a25c651e2901 -r 85c416441d42 src/widgets/dataform.lisp
+--- a/src/widgets/dataform.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/widgets/dataform.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -3,7 +3,7 @@
+ 
+ (export '(dataform dataform-data-view dataform-form-view
+ 	  render-dataform render-dataform-data render-dataform-form
+-	  annihilate-dataform dataform-submit-action))
++	  annihilate-dataform dataform-submit-action dataform-ui-state))
+ 
+ (defwidget dataform (data-editor)
+   ((data-view :accessor dataform-data-view
+@@ -19,6 +19,7 @@
+ 	      into form view. If 'form-view' isn't provided, the
+ 	      scaffold view will be used by default.")
+    (ui-state :initform :data
++	     :accessor dataform-ui-state
+ 	     :initarg :ui-state
+ 	     :documentation "Current internal state of the
+ 	     widget. Normally :data when rendering via 'render-data'
+@@ -67,7 +68,7 @@
+ 'args' - keyword arguments passed to functions internally. See
+ 'render-data', 'render-form', etc.")
+   (:method ((obj dataform) data &rest args)
+-    (ecase (slot-value obj 'ui-state)
++    (ecase (dataform-ui-state obj)
+       (:data (apply #'render-dataform-data obj data (dataform-data-view obj) args))
+       (:form (apply #'render-dataform-form obj data (dataform-form-view obj) args)))))
+ 
+@@ -103,7 +104,7 @@
+ 					    (apply #'dataform-submit-action obj data args)
+ 					  (if success
+ 					      (progn
+-						(mark-dirty obj :putp t)
++						(mark-dirty obj :propagate t)
+ 						(safe-funcall (dataform-on-success obj) obj)
+ 						(setf break-out t))
+ 					      (progn
+@@ -117,10 +118,11 @@
+ 				      (when break-out
+ 					(setf (slot-value obj 'validation-errors) nil)
+ 					(setf (slot-value obj 'intermediate-form-values) nil)
+-					(setf (slot-value obj 'ui-state) :data))))))
++					(setf (dataform-ui-state obj) :data))))))
+ 	   :validation-errors (slot-value obj 'validation-errors)
+ 	   :intermediate-values (slot-value obj 'intermediate-form-values)
+ 	   :widget obj
++           :form-view-buttons (data-editor-form-buttons obj)
+ 	   args)))
+ 
+ (defgeneric dataform-submit-action (obj data &rest args)
+@@ -135,3 +137,9 @@
+ 	   :class-store (dataform-class-store obj)
+ 	   args)))
+ 
++;; Dependencies
++(defmethod dependencies append ((obj dataform))
++  (dependencies
++   (ecase (dataform-ui-state obj)
++     (:form (dataform-form-view obj))
++     (:data (dataform-data-view obj)))))
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1259136806 -3600
+# Node ID 85c416441d4244b2a6531222c6133af6682a944b
+# Parent  a25c651e29011a88d24756230ea633461ab9c9eb
+Changes to forms processing and request deserialization so that we can run the same app-code in -stable and -dev
+
+diff -r a25c651e2901 -r 85c416441d42 src/snippets/html-utils.lisp
+--- a/src/snippets/html-utils.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/snippets/html-utils.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -51,9 +51,9 @@
+                         (:input :name *action-string* :type "hidden" :value ,action-code))))))
+        (log-form ,action-code :id ,id :class ,class))))
+ 
+-(defmacro with-html-form-change-fieldset-extra-tags ((method-type action &key id class enctype (use-ajax-p t) extra-submit-code (form-prefix-body nil)				       
++(defmacro with-html-form-no-fieldset-extra-tags ((method-type action &key id class enctype (use-ajax-p t) extra-submit-code (form-prefix-body nil)				       
+                           (submit-fn "initiateFormAction(\"~A\", $(this), \"~A\")")) &body body)
+-  "Transforms to cl-who (:form) with standard form code (AJAX support, actions, etc.)"
++  "Same as above, just no with-extra-tags"
+   (let ((action-code (gensym)))
+     `(let ((,action-code (function-or-action->action ,action)))
+        (with-html
+diff -r a25c651e2901 -r 85c416441d42 src/views/dataview.lisp
+--- a/src/views/dataview.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/views/dataview.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -2,7 +2,10 @@
+ (in-package :weblocks)
+ 
+ (export '(data data-view data-view-field data-scaffold
+-	  text-presentation highlight-regex-matches))
++	  text-presentation text-presentation-mixin
++          text-presentation-mixin-format-string
++          *text-presentation-mixin-default-format-string*
++	  highlight-regex-matches *presentation-dom-id*))
+ 
+ ;;; Data view
+ (defclass data-view (view)
+@@ -18,8 +21,23 @@
+ (defclass data-scaffold (scaffold)
+   ())
+ 
++(defparameter *text-presentation-mixin-default-format-string* "~A")
++
++;;; Text mixin
++(defclass text-presentation-mixin ()
++  ((format-string :accessor text-presentation-mixin-format-string
++                  :initform *text-presentation-mixin-default-format-string*
++                  :initarg :format-string
++                  :documentation "A format string used to print text
++                  value."))
++  (:documentation "A mixin for presentations that format strings."))
++
++(defmethod text-presentation-mixin-format-string ((presentation null))
++  "Convenience method, useful e.g. for testing."
++  *text-presentation-mixin-default-format-string*)
++
+ ;;; Presentation
+-(defclass text-presentation (presentation)
++(defclass text-presentation (presentation text-presentation-mixin)
+   ()
+   (:documentation "A default presentation that renders values as
+   text."))
+@@ -42,26 +60,36 @@
+ 			 (attributize-name (object-class-name obj)))
+ 	  (with-extra-tags
+ 	    (htm
+-	     (:h1 (fmt (view-caption view)
+-		       (humanize-name (object-class-name obj))))
++	     (unless (empty-p (view-caption view))
++	       (htm (:h1 (fmt (view-caption view)
++			      (humanize-name (object-class-name obj))))))
+ 	     (safe-apply fields-prefix-fn view obj args)
+ 	     (:ul (apply body-fn view obj args))
+ 	     (safe-apply fields-suffix-fn view obj args))))))
+ 
++
+ (defmethod render-view-field ((field data-view-field) (view data-view)
+ 			      widget presentation value obj
+-			      &rest args)
++			      &rest args &key field-info &allow-other-keys)
+   (with-html
+-    (:li :class (attributize-name (view-field-slot-name field))
+-	 (:span :class (concatenate 'string "label "
+-				    (attributize-presentation
+-				     (view-field-presentation field)))
+-		(str (view-field-label field)) ":&nbsp;")
++    (:li :class (if field-info
++                  (attributize-view-field-name field-info)
++                  (attributize-name (view-field-slot-name field)))
++	 (unless (empty-p (view-field-label field))
++	   (htm (:span :class (concatenate 'string "label "
++					   (attributize-presentation
++					    (view-field-presentation field)))
++		       (str (view-field-label field)) ":&nbsp;")))
+ 	 (apply #'render-view-field-value
+ 		value presentation
+ 		field view widget obj
+ 		args))))
+ 
++(defvar *presentation-dom-id* nil "DOM id of the currently rendered
++  presentation object. If bound during rendering (for example, in
++  an :around method for render-object-view, will be used by the various
++  functions that render form elements..")
++
+ (defmethod render-view-field-value (value (presentation text-presentation)
+ 				    field view widget obj &rest args
+ 				    &key highlight &allow-other-keys)
+@@ -69,7 +97,7 @@
+     (with-html
+       (:span :class "value"
+ 	     (str (if highlight
+-		      (highlight-regex-matches printed-value highlight)
++		      (highlight-regex-matches printed-value highlight presentation)
+ 		      (escape-for-html printed-value)))))))
+ 
+ (defmethod render-view-field-value ((value null) (presentation text-presentation)
+@@ -81,7 +109,7 @@
+       (with-html
+ 	(:span :class "value missing" "Not Specified"))))
+ 
+-(defun highlight-regex-matches (item highlight)
++(defun highlight-regex-matches (item highlight &optional presentation)
+   "This function highlights regex matches in text by wrapping them in
+ HTML 'string' tag. The complexity arises from the need to escape HTML
+ to prevent XSS attacks. If we simply wrap all matches in 'strong' tags
+@@ -94,7 +122,8 @@
+ 		       for match = (subseq item j k)
+ 		    collect (escape-for-html (subseq item i j)) into matches
+ 		    when (not (equalp match ""))
+-		         collect (format nil "<strong>~A</strong>"
++		         collect (format nil (format nil "<strong>~A</strong>"
++                                                     (text-presentation-mixin-format-string presentation))
+ 					 (escape-for-html match))
+ 		           into matches
+ 		    when (null rest) collect (escape-for-html (subseq item k (length item))) into matches
+@@ -103,8 +132,8 @@
+ 					(list (escape-for-html item))))))))
+ 
+ (defmethod print-view-field-value (value presentation field view widget obj &rest args)
+-  (declare (ignore presentation obj view field args))
+-  (format nil "~A" value))
++  (declare (ignore obj view field args))
++  (format nil (text-presentation-mixin-format-string presentation) value))
+ 
+ (defmethod print-view-field-value ((value symbol) presentation field view widget obj &rest args)
+   (declare (ignore presentation obj view field args))
+diff -r a25c651e2901 -r 85c416441d42 src/views/formview/formview.lisp
+--- a/src/views/formview/formview.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/views/formview/formview.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -2,17 +2,18 @@
+ (in-package :weblocks)
+ 
+ (export '(*form-default-error-summary-threshold*
+-	  *required-field-message* form form-view
+-	  form-view-error-summary-threshold form-view-use-ajax-p
+-	  form-view-default-method form-view-default-enctype
+-	  form-view-default-action form-view-persist-p form-view-focus-p form-view-satisfies
+-	  form-view-buttons form-view-field-writer-mixin form-view-field
+-	  form-view-field-parser form-view-field-satisfies
+-	  form-view-field-writer form-view-field-required-p mixin-form
+-	  mixin-form-view-field mixin-form-view-field-persist-p
+-	  *max-raw-input-length* input-presentation-max-length form-presentation
+-	  input input-presentation render-validation-summary
+-	  render-form-view-buttons form-field-intermediate-value))
++          *required-field-message* form form-view
++          form-view-error-summary-threshold form-view-use-ajax-p
++          form-view-default-method form-view-default-enctype
++          form-view-default-action form-view-persist-p form-view-focus-p
++          form-view-satisfies form-view-buttons form-view-field-writer-mixin
++          form-view-field form-view-field-parser form-view-field-satisfies
++          form-view-field-writer form-view-field-required-p
++          form-view-field-required-error-msg mixin-form mixin-form-view-field
++          mixin-form-view-field-persist-p *max-raw-input-length*
++          input-presentation-max-length form-presentation input
++          input-presentation render-validation-summary render-form-view-buttons
++          form-field-intermediate-value))
+ 
+ ;;; Default initialization parameters
+ (defparameter *form-default-error-summary-threshold* 15
+@@ -102,7 +103,14 @@
+ 	   :documentation "If this slot is bound to a function object,
+ 	   the function will be called with a new slot value and the
+ 	   object being rendered as arguments. If the slot is not
+-	   bound, '(setf slot-value)' will be used."))
++	   bound, '(setf slot-value)' will be used.")
++   (delayed-write-p :initarg :delayed-write-p
++		    :initform nil
++		    :accessor form-view-field-writer-delayed-p
++		    :documentation "If this slot is set to t, then the
++writer will get called after the object has been persisted. This is useful
++for updating relations, where objects need to be assigned ids and stored
++before relations can be updated."))
+   (:documentation "A writer slot mixin"))
+ 
+ (defclass form-view-field (inline-view-field form-view-field-writer-mixin)
+@@ -127,9 +135,25 @@
+ 	      :initarg :requiredp
+ 	      :accessor form-view-field-required-p
+ 	      :documentation "A predicate which determines whether the
+-	      field is required."))
++	      field is required.")
++   (required-error-msg :initform nil
++                       :initarg :required-error-msg
++                       :accessor form-view-field-required-error-msg
++                       :documentation "If this value isn't nil, it is
++                       presented to the user when the field is
++                       required and missing from the input
++                       data. Otherwise, the standard required error
++                       message is presented."))
+   (:documentation "A field class of the form view."))
+ 
++(defun get-required-error-msg (form-view-field)
++  "Returns an error message for a missing required field."
++  (if (form-view-field-required-error-msg form-view-field)
++      (form-view-field-required-error-msg form-view-field)
++      (format nil *required-field-message*
++              (humanize-name
++               (view-field-label form-view-field)))))
++
+ (defclass mixin-form-view-field (mixin-view-field form-view-field-writer-mixin)
+   ((persistp :initarg :persistp
+ 	     :accessor mixin-form-view-field-persist-p
+@@ -160,7 +184,7 @@
+ (defparameter *max-raw-input-length* 40
+   "Default maximum allowed input length for input fields.")
+ 
+-(defclass input-presentation (form-presentation)
++(defclass input-presentation (form-presentation text-presentation-mixin)
+   ((max-length :initform *max-raw-input-length*
+ 	       :initarg :max-length
+ 	       :accessor input-presentation-max-length
+@@ -202,7 +226,7 @@
+ 				   (str (format nil "~A" (cdr err))))))
+ 			      field-errors))))))))))
+ 
+-(defgeneric render-form-view-buttons (view obj widget &rest args)
++(defgeneric render-form-view-buttons (view obj widget &rest args &key buttons &allow-other-keys)
+   (:documentation
+    "Renders buttons specified view 'buttons' slot of the 'form-view'
+ object. By default, this method renders 'Submit' and 'Cancel' buttons
+@@ -210,14 +234,21 @@
+ differently.
+ 
+ 'view' - the view being rendered.
+-'obj' - the object being rendered.")
+-  (:method ((view form-view) obj widget &rest args)
++'obj' - the object being rendered.
++'buttons' - same as form-view-buttons, can be used to override
++form-view-buttons for a given view.")
++  (:method ((view form-view) obj widget &rest args &key form-view-buttons &allow-other-keys)
+     (declare (ignore obj args))
+     (flet ((find-button (name)
+ 	     (ensure-list
+-	      (find name (form-view-buttons view)
+-		    :key (lambda (item)
+-			   (car (ensure-list item)))))))
++	      (and (if form-view-buttons
++                       (find name form-view-buttons
++                             :key (lambda (item)
++                                    (car (ensure-list item))))
++                       t)
++                   (find name (form-view-buttons view)
++                         :key (lambda (item)
++                                (car (ensure-list item))))))))
+       (with-html
+ 	(:div :class "submit"
+ 	      (let ((submit (find-button :submit)))
+@@ -274,38 +305,49 @@
+ 			      :use-ajax-p (form-view-use-ajax-p view))
+ 	(write-string form-body *weblocks-output-stream*)))
+     (when (form-view-focus-p view)
+-        (send-script (ps* `(.focus-first-element ($ ,form-id)))))))
++        (send-script (ps* `((@ ($ ,form-id) focus-first-element)))))))
+ 
+ (defmethod render-view-field ((field form-view-field) (view form-view)
+ 			      widget presentation value obj 
+-			      &rest args &key validation-errors &allow-other-keys)
+-  (let* ((attribute-slot-name (attributize-name (view-field-slot-name field)))
++			      &rest args &key validation-errors field-info &allow-other-keys)
++  (declare (special *presentation-dom-id*))
++  (let* ((attributized-slot-name (if field-info
++                                   (attributize-view-field-name field-info)
++                                   (attributize-name (view-field-slot-name field))))
+ 	 (validation-error (assoc field validation-errors))
+-	 (field-class (concatenate 'string attribute-slot-name
+-				   (when validation-error " item-not-validated"))))
++	 (field-class (concatenate 'string (aif attributized-slot-name it "")
++				   (when validation-error " item-not-validated")))
++         (*presentation-dom-id* (gen-id)))
+     (with-html
+       (:li :class field-class
+ 	   (:label :class (attributize-presentation
+ 			   (view-field-presentation field))
++                   :for *presentation-dom-id*
+ 		   (:span :class "slot-name"
+ 			  (:span :class "extra"
+-				 (str (view-field-label field)) ":&nbsp;"
++				 (unless (empty-p (view-field-label field))
++				   (str (view-field-label field))
++				   (str ":&nbsp;"))
+ 				 (when (form-view-field-required-p field)
+-				   (htm (:em :class "required-slot" "(required)&nbsp;")))))
+-		   (apply #'render-view-field-value
+-			  value presentation
+-			  field view widget obj
+-			  args)
+-		   (when validation-error
+-		     (htm (:p :class "validation-error"
+-			      (:em
+-			       (:span :class "validation-error-heading" "Error:&nbsp;")
+-			       (str (format nil "~A" (cdr validation-error))))))))))))
++				   (htm (:em :class "required-slot" "(required)&nbsp;"))))))
++           (apply #'render-view-field-value
++                  value presentation
++                  field view widget obj
++                  :field-info field-info
++                  args)
++           (when validation-error
++             (htm (:p :class "validation-error"
++                      (:em
++                        (:span :class "validation-error-heading" "Error:&nbsp;")
++                        (str (format nil "~A" (cdr validation-error)))))))))))
+ 
+ (defmethod render-view-field-value (value (presentation input-presentation)
+ 				    field view widget obj
+-				    &rest args &key intermediate-values &allow-other-keys)
+-  (let ((attributized-slot-name (attributize-name (view-field-slot-name field))))
++				    &rest args &key intermediate-values field-info &allow-other-keys)
++  (declare (special *presentation-dom-id*))
++  (let ((attributized-slot-name (if field-info
++                                  (attributize-view-field-name field-info)
++                                  (attributize-name (view-field-slot-name field)))))
+     (multiple-value-bind (intermediate-value intermediate-value-p)
+ 	(form-field-intermediate-value field intermediate-values)
+       (with-html
+@@ -313,7 +355,8 @@
+ 		  :value (if intermediate-value-p
+ 			     intermediate-value
+ 			     (apply #'print-view-field-value value presentation field view widget obj args))
+-		  :maxlength (input-presentation-max-length presentation))))))
++		  :maxlength (input-presentation-max-length presentation)
++		  :id *presentation-dom-id*)))))
+ 
+ (defmethod print-view-field-value ((value null) (presentation input-presentation)
+ 				   field view widget obj &rest args)
+diff -r a25c651e2901 -r 85c416441d42 src/views/formview/parser.lisp
+--- a/src/views/formview/parser.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/views/formview/parser.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -64,9 +64,11 @@
+ (defmethod parse-view-field-value ((parser text-parser) value obj
+ 				   (view form-view) (field form-view-field) &rest args)
+   (declare (ignore args))
+-  (if (text-parser-matches parser)
+-      (when (ppcre:all-matches (text-parser-matches parser) value)
+-	(values t (text-input-present-p value) value))
++  (if (and (text-parser-matches parser)
++           (text-input-present-p value))
++      (let ((res (ppcre:all-matches (text-parser-matches parser) value)))
++        (when (and res (= (length res) 2))
++            (values t (text-input-present-p value) value)))
+       (values t (text-input-present-p value) value)))
+ 
+ (defun text-input-present-p (value)
+diff -r a25c651e2901 -r 85c416441d42 src/views/formview/request-deserialization.lisp
+--- a/src/views/formview/request-deserialization.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/views/formview/request-deserialization.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -38,21 +38,18 @@
+ 			(lambda (field-info)
+ 			  (let* ((field (field-info-field field-info))
+ 				 (obj (field-info-object field-info))
+-				 (field-key (attributize-name (view-field-slot-name field)))
++				 (field-key (attributize-view-field-name field-info))
+ 				 (field-value (request-parameter-for-presentation field-key
+                                                                                   (view-field-presentation field))))
+ 			    (when (typep (view-field-presentation field) 'form-presentation)
+ 			      (multiple-value-bind (parsedp presentp parsed-value)
+ 				  (apply #'parse-view-field-value (form-view-field-parser field)
+ 					 field-value obj view field
+-					 args)
++					 :field-info field-info args)
+ 				(if parsedp
+ 				    (if (not presentp)
+ 					(if (form-view-field-required-p field)
+-					    (push (cons field
+-							(format nil *required-field-message*
+-								(humanize-name
+-								 (view-field-label field))))
++					    (push (cons field (get-required-error-msg field))
+ 						  errors)
+ 					    (push (cons field-info nil) results))
+ 					(push (cons field-info parsed-value) results))
+@@ -77,7 +74,7 @@
+ 			   (funcall writer value obj)
+ 			   (setf (slot-value obj (view-field-slot-name field))
+ 				 value))))))
+-	     (deserialize-object-from-parsed-values (parsed-values)
++	     (deserialize-object-from-parsed-values (parsed-values &key write-delayed)
+ 	       "Accepts an an association list of field-info
+                structures and parsed-values, and records each parsed
+                value in the corresponding field's object slot."
+@@ -87,7 +84,11 @@
+ 			 (let ((field (field-info-field field-info))
+ 			       (obj (field-info-object field-info)))
+ 			   (when (typep (view-field-presentation field) 'form-presentation)
+-			     (write-value field parsed-value obj)))))
++			     (if (form-view-field-writer-delayed-p field)
++				 (when write-delayed
++				   (write-value field parsed-value obj))
++				 (unless write-delayed
++				   (write-value field parsed-value obj)))))))
+ 		     parsed-values))
+ 	     (persist-object-view (obj view field-info-list)
+ 	       "Persists an object view to the backend store. If the
+@@ -120,6 +121,7 @@
+ 		    (deserialize-object-from-parsed-values results)
+ 		    (when (form-view-persist-p view)
+ 		      (persist-object-view obj view (mapcar #'car results)))
++		    (deserialize-object-from-parsed-values results :write-delayed t)
+ 		    t)
+ 		  (values nil errors)))
+ 	    (values nil results))))))
+@@ -138,7 +140,7 @@
+ 	   (let ((field (field-info-field field-info)))
+ 	     (when (typep (view-field-presentation field) 'form-presentation)
+ 	       (let* ((slot-name (view-field-slot-name field))
+-		      (slot-key (attributize-name slot-name))
++		      (slot-key (attributize-view-field-name field-info))
+ 		      (request-slot-value (request-parameter-for-presentation
+ 					   slot-key (view-field-presentation field))))
+ 		 (cons field request-slot-value)))))
+diff -r a25c651e2901 -r 85c416441d42 src/widgets/data-editor.lisp
+--- a/src/widgets/data-editor.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/widgets/data-editor.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -3,7 +3,8 @@
+ 
+ (export '(data-editor dataform-data dataform-class-store
+ 	  dataform-on-cancel dataform-on-success
+-	  dataform-allow-close-p dataform-on-close))
++	  dataform-allow-close-p dataform-on-close
++	  data-editor-form-buttons render-dataform-data-buttons))
+ 
+ (defwidget data-editor ()
+   ((data :accessor dataform-data
+@@ -42,7 +43,14 @@
+ 	     :documentation "An optional callback function with one
+ 	     argument (the dataform widget). Called when the user
+ 	     clicks on the close button. Note that the close button is
+-	     only rendered if 'allow-close-p' is true."))
++	     only rendered if 'allow-close-p' is true.")
++   (form-buttons :initform nil
++                 :initarg :form-buttons
++                 :accessor data-editor-form-buttons
++                 :documentation "Same as `form-view-buttons'. If not null,
++	    used to override the value of `form-view-buttons' for the
++	    view being rendered (by passing :form-view-buttons arg to
++	    the view)."))
+   (:documentation "The details of stateful handling of forms
+   manipulating objects.  Mix this in to drop-in your own replacement
+   for `dataform', when the view DSL isn't expressive enough and you
+@@ -54,6 +62,15 @@
+     (setf (dataform-class-store obj)
+ 	  (object-store (dataform-data obj)))))
+ 
++(defgeneric (setf dataform-ui-state) (new-value data-editor)
++  (:documentation "When a dataform or similar, change DATA-EDITOR's
++  state to NEW-VALUE, which should be :data or :form.")
++  (:method (new-value (wij data-editor))
++    (style-warn 'misunderstood-action
++      :action (format nil "changed a dataform's state to ~S" new-value)
++      :missing "`dataform-ui-state' accessor implementation")
++    new-value))
++
+ (defgeneric render-dataform-data-buttons (dataform data)
+   (:documentation "Render the buttons and links appearing with the
+   data view on a dataform."))
+@@ -64,13 +81,13 @@
+   (with-html
+     (:div :class "submit"
+ 	  (render-link (make-action
+-			(f_% (setf (slot-value obj 'ui-state) :form)))
+-		       #!"Modify"
++			(f_% (setf (dataform-ui-state obj) :form)))
++		       "Modify"
+ 		       :class "modify")
+ 	  (when (and (dataform-allow-close-p obj)
+ 		     (dataform-on-close obj))
+ 	    (str "&nbsp;")
+ 	    (render-link (make-action
+ 			  (f_% (funcall (dataform-on-close obj) obj)))
+-			 #!"Close"
++			 "Close"
+ 			 :class "close")))))
+diff -r a25c651e2901 -r 85c416441d42 src/widgets/dataform.lisp
+--- a/src/widgets/dataform.lisp	Sun Nov 22 17:19:48 2009 +0100
++++ b/src/widgets/dataform.lisp	Wed Nov 25 09:13:26 2009 +0100
+@@ -3,7 +3,7 @@
+ 
+ (export '(dataform dataform-data-view dataform-form-view
+ 	  render-dataform render-dataform-data render-dataform-form
+-	  annihilate-dataform dataform-submit-action))
++	  annihilate-dataform dataform-submit-action dataform-ui-state))
+ 
+ (defwidget dataform (data-editor)
+   ((data-view :accessor dataform-data-view
+@@ -19,6 +19,7 @@
+ 	      into form view. If 'form-view' isn't provided, the
+ 	      scaffold view will be used by default.")
+    (ui-state :initform :data
++	     :accessor dataform-ui-state
+ 	     :initarg :ui-state
+ 	     :documentation "Current internal state of the
+ 	     widget. Normally :data when rendering via 'render-data'
+@@ -67,7 +68,7 @@
+ 'args' - keyword arguments passed to functions internally. See
+ 'render-data', 'render-form', etc.")
+   (:method ((obj dataform) data &rest args)
+-    (ecase (slot-value obj 'ui-state)
++    (ecase (dataform-ui-state obj)
+       (:data (apply #'render-dataform-data obj data (dataform-data-view obj) args))
+       (:form (apply #'render-dataform-form obj data (dataform-form-view obj) args)))))
+ 
+@@ -103,7 +104,7 @@
+ 					    (apply #'dataform-submit-action obj data args)
+ 					  (if success
+ 					      (progn
+-						(mark-dirty obj :putp t)
++						(mark-dirty obj :propagate t)
+ 						(safe-funcall (dataform-on-success obj) obj)
+ 						(setf break-out t))
+ 					      (progn
+@@ -117,10 +118,11 @@
+ 				      (when break-out
+ 					(setf (slot-value obj 'validation-errors) nil)
+ 					(setf (slot-value obj 'intermediate-form-values) nil)
+-					(setf (slot-value obj 'ui-state) :data))))))
++					(setf (dataform-ui-state obj) :data))))))
+ 	   :validation-errors (slot-value obj 'validation-errors)
+ 	   :intermediate-values (slot-value obj 'intermediate-form-values)
+ 	   :widget obj
++           :form-view-buttons (data-editor-form-buttons obj)
+ 	   args)))
+ 
+ (defgeneric dataform-submit-action (obj data &rest args)
+@@ -135,3 +137,9 @@
+ 	   :class-store (dataform-class-store obj)
+ 	   args)))
+ 
++;; Dependencies
++(defmethod dependencies append ((obj dataform))
++  (dependencies
++   (ecase (dataform-ui-state obj)
++     (:form (dataform-form-view obj))
++     (:data (dataform-data-view obj)))))

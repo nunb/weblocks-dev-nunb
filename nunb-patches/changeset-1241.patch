@@ -1,0 +1,75 @@
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1243938128 -7200
+# Node ID 887c89efcc3eb30f5f02989db53d6c1980405c1f
+# Parent  537f0e0047fbf9b29ada888fecffc59ac0dc913c
+Basic xlation
+
+diff -r 537f0e0047fb -r 887c89efcc3e src/widgets/data-editor.lisp
+--- a/src/widgets/data-editor.lisp	Tue Jun 02 12:20:37 2009 +0200
++++ b/src/widgets/data-editor.lisp	Tue Jun 02 12:22:08 2009 +0200
+@@ -65,12 +65,12 @@
+     (:div :class "submit"
+ 	  (render-link (make-action
+ 			(f_% (setf (slot-value obj 'ui-state) :form)))
+-		       "Modify"
++		       #!"Modify"
+ 		       :class "modify")
+ 	  (when (and (dataform-allow-close-p obj)
+ 		     (dataform-on-close obj))
+ 	    (str "&nbsp;")
+ 	    (render-link (make-action
+ 			  (f_% (funcall (dataform-on-close obj) obj)))
+-			 "Close"
++			 #!"Close"
+ 			 :class "close")))))
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1243938128 -7200
+# Node ID 887c89efcc3eb30f5f02989db53d6c1980405c1f
+# Parent  537f0e0047fbf9b29ada888fecffc59ac0dc913c
+Basic xlation
+
+diff -r 537f0e0047fb -r 887c89efcc3e src/widgets/data-editor.lisp
+--- a/src/widgets/data-editor.lisp	Tue Jun 02 12:20:37 2009 +0200
++++ b/src/widgets/data-editor.lisp	Tue Jun 02 12:22:08 2009 +0200
+@@ -65,12 +65,12 @@
+     (:div :class "submit"
+ 	  (render-link (make-action
+ 			(f_% (setf (slot-value obj 'ui-state) :form)))
+-		       "Modify"
++		       #!"Modify"
+ 		       :class "modify")
+ 	  (when (and (dataform-allow-close-p obj)
+ 		     (dataform-on-close obj))
+ 	    (str "&nbsp;")
+ 	    (render-link (make-action
+ 			  (f_% (funcall (dataform-on-close obj) obj)))
+-			 "Close"
++			 #!"Close"
+ 			 :class "close")))))
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1243938128 -7200
+# Node ID 887c89efcc3eb30f5f02989db53d6c1980405c1f
+# Parent  537f0e0047fbf9b29ada888fecffc59ac0dc913c
+Basic xlation
+
+diff -r 537f0e0047fb -r 887c89efcc3e src/widgets/data-editor.lisp
+--- a/src/widgets/data-editor.lisp	Tue Jun 02 12:20:37 2009 +0200
++++ b/src/widgets/data-editor.lisp	Tue Jun 02 12:22:08 2009 +0200
+@@ -65,12 +65,12 @@
+     (:div :class "submit"
+ 	  (render-link (make-action
+ 			(f_% (setf (slot-value obj 'ui-state) :form)))
+-		       "Modify"
++		       #!"Modify"
+ 		       :class "modify")
+ 	  (when (and (dataform-allow-close-p obj)
+ 		     (dataform-on-close obj))
+ 	    (str "&nbsp;")
+ 	    (render-link (make-action
+ 			  (f_% (funcall (dataform-on-close obj) obj)))
+-			 "Close"
++			 #!"Close"
+ 			 :class "close")))))

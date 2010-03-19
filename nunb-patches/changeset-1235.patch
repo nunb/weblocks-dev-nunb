@@ -1,0 +1,19 @@
+# HG changeset patch
+# User Leslie P. Polzer <polzer@gnu.org>
+# Date 1239129858 -7200
+# Node ID d4b653ff9eb68a72d0f3ac823bca7154c5c63951
+# Parent  d943d59b259961ffb12b2af1b4f2e4a4e07af0c9
+Fixed dialog rendering on normal request.
+
+diff -r d943d59b2599 -r d4b653ff9eb6 src/control-flow/dialog.lisp
+--- a/src/control-flow/dialog.lisp	Fri Apr 03 17:15:43 2009 +0200
++++ b/src/control-flow/dialog.lisp	Tue Apr 07 20:44:18 2009 +0200
+@@ -61,7 +61,7 @@
+   ;(format t "~%UPDATE-DIALOG: tokens=~S, cnavurl=~S~%" *uri-tokens* *current-navigation-url*)
+   (let ((current-dialog (current-dialog)))
+     (when (and current-dialog
+-	       (refresh-request-p))
++	       (not (ajax-request-p)))
+       (with-javascript
+ 	(ps* `(:|*Event.observe| window "load"
+                                  (lambda ()

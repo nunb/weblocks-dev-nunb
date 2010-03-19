@@ -1,0 +1,39 @@
+# HG changeset patch
+# User Leslie P. Polzer <polzer@gnu.org>
+# Date 1241777551 -7200
+# Node ID 2d68816eb2c6c8f62f34119f563bfde4739597c8
+# Parent  d4b653ff9eb68a72d0f3ac823bca7154c5c63951
+RENDER-BUTTON: allow the user to turn off disabling of other buttons in the form
+
+diff -r d4b653ff9eb6 -r 2d68816eb2c6 src/snippets/html-utils.lisp
+--- a/src/snippets/html-utils.lisp	Tue Apr 07 20:44:18 2009 +0200
++++ b/src/snippets/html-utils.lisp	Fri May 08 12:12:31 2009 +0200
+@@ -62,7 +62,8 @@
+ 	  (str name)))
+     (log-link name action-code :id id :class class)))
+ 
+-(defun render-button (name  &key (value (humanize-name name)) id (class "submit"))
++(defun render-button (name  &key (value (humanize-name name)) id (class "submit")
++                            (disable-other-buttons-p t))
+   "Renders a button in a form.
+ 
+ 'name' - name of the html control. The name is attributized before
+@@ -72,7 +73,8 @@
+ 'class' - a class used for styling. By default, \"submit\"."
+   (with-html
+     (:input :name (attributize-name name) :type "submit" :id id :class class
+-	    :value value :onclick "disableIrrelevantButtons(this);")))
++	    :value value :onclick (when disable-other-buttons-p
++                                    "disableIrrelevantButtons(this);"))))
+ 
+ (defun render-form-and-button (name action &key (value (humanize-name name))
+ 			       (method :get)
+@@ -326,7 +328,7 @@
+     (let ((code (with-javascript-to-string script)))
+     ;(let ((json (format nil "new Function(~A)" (encode-json-to-string script))))
+       (declare (special *before-ajax-complete-scripts* *on-ajax-complete-scripts*))
+-      (warn (format nil "pushed js code ~A " code))
++      ;(warn (format nil "pushed js code ~A " code))
+       (ecase place
+         (:before-load (push code *before-ajax-complete-scripts*))
+         (:after-load (push code *on-ajax-complete-scripts*))))

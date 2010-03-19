@@ -1,0 +1,57 @@
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1259242455 -3600
+# Node ID eebd6426363b50645803a8a7f514fb214ca53f75
+# Parent  85c416441d4244b2a6531222c6133af6682a944b
+Add without extra tags macro
+
+diff -r 85c416441d42 -r eebd6426363b src/snippets/html-utils.lisp
+--- a/src/snippets/html-utils.lisp	Wed Nov 25 09:13:26 2009 +0100
++++ b/src/snippets/html-utils.lisp	Thu Nov 26 14:34:15 2009 +0100
+@@ -3,7 +3,7 @@
+ 
+ (export '(*submit-control-name*
+           *cancel-control-name*
+-          with-html-form with-html-form-change-fieldset-extra-tags
++          with-html-form with-html-form-change-fieldset-extra-tags  with-html-form-no-fieldset-extra-tags
+ 	  render-link
+           render-button
+           render-form-and-button
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1259242455 -3600
+# Node ID eebd6426363b50645803a8a7f514fb214ca53f75
+# Parent  85c416441d4244b2a6531222c6133af6682a944b
+Add without extra tags macro
+
+diff -r 85c416441d42 -r eebd6426363b src/snippets/html-utils.lisp
+--- a/src/snippets/html-utils.lisp	Wed Nov 25 09:13:26 2009 +0100
++++ b/src/snippets/html-utils.lisp	Thu Nov 26 14:34:15 2009 +0100
+@@ -3,7 +3,7 @@
+ 
+ (export '(*submit-control-name*
+           *cancel-control-name*
+-          with-html-form with-html-form-change-fieldset-extra-tags
++          with-html-form with-html-form-change-fieldset-extra-tags  with-html-form-no-fieldset-extra-tags
+ 	  render-link
+           render-button
+           render-form-and-button
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1259242455 -3600
+# Node ID eebd6426363b50645803a8a7f514fb214ca53f75
+# Parent  85c416441d4244b2a6531222c6133af6682a944b
+Add without extra tags macro
+
+diff -r 85c416441d42 -r eebd6426363b src/snippets/html-utils.lisp
+--- a/src/snippets/html-utils.lisp	Wed Nov 25 09:13:26 2009 +0100
++++ b/src/snippets/html-utils.lisp	Thu Nov 26 14:34:15 2009 +0100
+@@ -3,7 +3,7 @@
+ 
+ (export '(*submit-control-name*
+           *cancel-control-name*
+-          with-html-form with-html-form-change-fieldset-extra-tags
++          with-html-form with-html-form-change-fieldset-extra-tags  with-html-form-no-fieldset-extra-tags
+ 	  render-link
+           render-button
+           render-form-and-button

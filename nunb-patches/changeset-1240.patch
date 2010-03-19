@@ -1,0 +1,162 @@
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1243938037 -7200
+# Node ID 537f0e0047fbf9b29ada888fecffc59ac0dc913c
+# Parent  629c1447b302a8834993cb7be6c333f0c4db308b
+do not carp for actions changes
+
+diff -r 629c1447b302 -r 537f0e0047fb src/snippets/html-utils.lisp
+--- a/src/snippets/html-utils.lisp	Tue Jun 02 12:18:46 2009 +0200
++++ b/src/snippets/html-utils.lisp	Tue Jun 02 12:20:37 2009 +0200
+@@ -1,12 +1,26 @@
+ 
+ (in-package :weblocks)
+ 
+-(export '(*submit-control-name* *cancel-control-name* with-html-form
+-	  render-link render-button render-form-and-button
+-	  render-checkbox render-dropdown render-autodropdown
+-	  *dropdown-welcome-message* render-radio-buttons
+-	  render-close-button render-input-field render-password
+-          render-textarea render-list scriptonly noscript render-message
++(export '(*submit-control-name*
++          *cancel-control-name*
++          with-html-form
++	  render-link
++          render-button
++          render-form-and-button
++	  render-checkbox
++          render-dropdown
++          render-autodropdown
++	  *dropdown-welcome-message*
++          render-radio-buttons
++	  render-close-button
++          render-input-field
++          render-password
++          render-textarea
++          render-list
++          scriptonly
++          noscript
++          render-message
++          *defer-inline-js*
+           send-script))
+ 
+ (defparameter *submit-control-name* "submit"
+@@ -323,6 +337,10 @@
+        (:noscript
+ 	 ,@body))))
+ 
++(defvar *defer-inline-js* t
++  "Whether to defer inline Javascript to the end of the page.
++This is a performance optimization.")
++
+ (defun send-script (script &optional (place :after-load))
+   (if (ajax-request-p)
+     (let ((code (with-javascript-to-string script)))
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1243938037 -7200
+# Node ID 537f0e0047fbf9b29ada888fecffc59ac0dc913c
+# Parent  629c1447b302a8834993cb7be6c333f0c4db308b
+do not carp for actions changes
+
+diff -r 629c1447b302 -r 537f0e0047fb src/snippets/html-utils.lisp
+--- a/src/snippets/html-utils.lisp	Tue Jun 02 12:18:46 2009 +0200
++++ b/src/snippets/html-utils.lisp	Tue Jun 02 12:20:37 2009 +0200
+@@ -1,12 +1,26 @@
+ 
+ (in-package :weblocks)
+ 
+-(export '(*submit-control-name* *cancel-control-name* with-html-form
+-	  render-link render-button render-form-and-button
+-	  render-checkbox render-dropdown render-autodropdown
+-	  *dropdown-welcome-message* render-radio-buttons
+-	  render-close-button render-input-field render-password
+-          render-textarea render-list scriptonly noscript render-message
++(export '(*submit-control-name*
++          *cancel-control-name*
++          with-html-form
++	  render-link
++          render-button
++          render-form-and-button
++	  render-checkbox
++          render-dropdown
++          render-autodropdown
++	  *dropdown-welcome-message*
++          render-radio-buttons
++	  render-close-button
++          render-input-field
++          render-password
++          render-textarea
++          render-list
++          scriptonly
++          noscript
++          render-message
++          *defer-inline-js*
+           send-script))
+ 
+ (defparameter *submit-control-name* "submit"
+@@ -323,6 +337,10 @@
+        (:noscript
+ 	 ,@body))))
+ 
++(defvar *defer-inline-js* t
++  "Whether to defer inline Javascript to the end of the page.
++This is a performance optimization.")
++
+ (defun send-script (script &optional (place :after-load))
+   (if (ajax-request-p)
+     (let ((code (with-javascript-to-string script)))
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1243938037 -7200
+# Node ID 537f0e0047fbf9b29ada888fecffc59ac0dc913c
+# Parent  629c1447b302a8834993cb7be6c333f0c4db308b
+do not carp for actions changes
+
+diff -r 629c1447b302 -r 537f0e0047fb src/snippets/html-utils.lisp
+--- a/src/snippets/html-utils.lisp	Tue Jun 02 12:18:46 2009 +0200
++++ b/src/snippets/html-utils.lisp	Tue Jun 02 12:20:37 2009 +0200
+@@ -1,12 +1,26 @@
+ 
+ (in-package :weblocks)
+ 
+-(export '(*submit-control-name* *cancel-control-name* with-html-form
+-	  render-link render-button render-form-and-button
+-	  render-checkbox render-dropdown render-autodropdown
+-	  *dropdown-welcome-message* render-radio-buttons
+-	  render-close-button render-input-field render-password
+-          render-textarea render-list scriptonly noscript render-message
++(export '(*submit-control-name*
++          *cancel-control-name*
++          with-html-form
++	  render-link
++          render-button
++          render-form-and-button
++	  render-checkbox
++          render-dropdown
++          render-autodropdown
++	  *dropdown-welcome-message*
++          render-radio-buttons
++	  render-close-button
++          render-input-field
++          render-password
++          render-textarea
++          render-list
++          scriptonly
++          noscript
++          render-message
++          *defer-inline-js*
+           send-script))
+ 
+ (defparameter *submit-control-name* "submit"
+@@ -323,6 +337,10 @@
+        (:noscript
+ 	 ,@body))))
+ 
++(defvar *defer-inline-js* t
++  "Whether to defer inline Javascript to the end of the page.
++This is a performance optimization.")
++
+ (defun send-script (script &optional (place :after-load))
+   (if (ajax-request-p)
+     (let ((code (with-javascript-to-string script)))

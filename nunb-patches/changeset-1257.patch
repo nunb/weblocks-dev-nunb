@@ -1,0 +1,252 @@
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1259309932 -3600
+# Node ID b3ab68b58d0766a5bfa303e3726c0d9a0be48904
+# Parent  8640341ac30356c1c127ff964fea342282901fbe
+Add Bordeaux threads and make guarded prevalence system
+
+diff -r 8640341ac303 -r b3ab68b58d07 src/application.lisp
+--- a/src/application.lisp	Thu Nov 26 17:04:07 2009 +0100
++++ b/src/application.lisp	Fri Nov 27 09:18:52 2009 +0100
+@@ -290,13 +290,9 @@
+   (:method ((app t)) nil))
+ 
+ (defmethod finalize-webapp :after ((app weblocks-webapp))
+-  "When all webapps are shut down, close any open stores and stop the weblocks server"
++  "Shutdown Weblocks when no more apps are running."
+   (when (null *active-webapps*)
+-    (close-stores)
+-    (setf *last-session* nil)
+-    (reset-sessions)
+-    (stop-server *weblocks-server*)
+-    (setf *weblocks-server* nil)))
++    (stop-weblocks)))
+ 
+ (defun find-app (name)
+   (let ((app (get-webapp name nil))
+diff -r 8640341ac303 -r b3ab68b58d07 src/store/prevalence/prevalence.lisp
+--- a/src/store/prevalence/prevalence.lisp	Thu Nov 26 17:04:07 2009 +0100
++++ b/src/store/prevalence/prevalence.lisp	Fri Nov 27 09:18:52 2009 +0100
+@@ -18,10 +18,10 @@
+ (defmethod open-store ((store-type (eql :prevalence)) &rest args)
+   (let* ((store (apply #'make-instance 'guarded-prevalence-system :directory (car args) (cdr args)))
+          (lock-name (format nil "Prevalence lock for store ~S" store))
+-         (lock (hunchentoot-mp:make-lock lock-name)))
++         (lock (bordeaux-threads:make-lock lock-name)))
+     (setf (gethash store *locks*) lock)
+     (setf (get-guard store) (lambda (thunk)
+-                              (hunchentoot-mp:with-lock (lock)
++                              (bordeaux-threads:with-lock-held (lock)
+                                 (funcall thunk))))
+     (setf *default-store* store)))
+ 
+@@ -66,9 +66,11 @@
+   (:documentation "This class represents an alternative to RDBMS
+   table, holding object instances of a given class."))
+ 
+-(defmethod persist-object ((store prevalence-system) object)
+-  (execute store (make-transaction 'tx-persist-object-prevalence
+-				   object)))
++(defmethod persist-object ((store prevalence-system) object &key (txn-p t))
++  (if txn-p
++    (execute store (make-transaction 'tx-persist-object-prevalence
++                                     object))
++    (funcall 'tx-persist-object-prevalence store object)))
+ 
+ (defun tx-persist-object-prevalence (store object)
+   "Persists the object in the store."
+@@ -111,7 +113,8 @@
+ (defmethod find-persistent-object-by-id ((store prevalence-system) class-name object-id)
+   (let ((objects (get-root-object store class-name)))
+     ; find the object
+-    (gethash object-id (persistent-objects-of-class-by-id objects))))
++    (when objects
++      (gethash object-id (persistent-objects-of-class-by-id objects)))))
+ 
+ (defmethod find-persistent-objects ((store prevalence-system) class-name 
+ 				    &key (filter nil) order-by range slot
+@@ -156,3 +159,4 @@
+ 
+ (defun make-persistent-instance (store class &rest initargs)
+   (persist-object store (apply #'make-instance class initargs)))
++
+diff -r 8640341ac303 -r b3ab68b58d07 src/store/prevalence/weblocks-prevalence.asd
+--- a/src/store/prevalence/weblocks-prevalence.asd	Thu Nov 26 17:04:07 2009 +0100
++++ b/src/store/prevalence/weblocks-prevalence.asd	Fri Nov 27 09:18:52 2009 +0100
+@@ -11,7 +11,7 @@
+   :author "Slava Akhmechet"
+   :licence "LLGPL"
+   :description "A weblocks backend for cl-prevalence."
+-  :depends-on (:metatilities :cl-ppcre :cl-prevalence)
++  :depends-on (:metatilities :cl-ppcre :cl-prevalence :bordeaux-threads)
+   :components ((:file "prevalence"))
+   :in-order-to ((compile-op (prepare-prevalence-op :weblocks-prevalence))
+ 		(load-op (prepare-prevalence-op :weblocks-prevalence))))
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1259309932 -3600
+# Node ID b3ab68b58d0766a5bfa303e3726c0d9a0be48904
+# Parent  8640341ac30356c1c127ff964fea342282901fbe
+Add Bordeaux threads and make guarded prevalence system
+
+diff -r 8640341ac303 -r b3ab68b58d07 src/application.lisp
+--- a/src/application.lisp	Thu Nov 26 17:04:07 2009 +0100
++++ b/src/application.lisp	Fri Nov 27 09:18:52 2009 +0100
+@@ -290,13 +290,9 @@
+   (:method ((app t)) nil))
+ 
+ (defmethod finalize-webapp :after ((app weblocks-webapp))
+-  "When all webapps are shut down, close any open stores and stop the weblocks server"
++  "Shutdown Weblocks when no more apps are running."
+   (when (null *active-webapps*)
+-    (close-stores)
+-    (setf *last-session* nil)
+-    (reset-sessions)
+-    (stop-server *weblocks-server*)
+-    (setf *weblocks-server* nil)))
++    (stop-weblocks)))
+ 
+ (defun find-app (name)
+   (let ((app (get-webapp name nil))
+diff -r 8640341ac303 -r b3ab68b58d07 src/store/prevalence/prevalence.lisp
+--- a/src/store/prevalence/prevalence.lisp	Thu Nov 26 17:04:07 2009 +0100
++++ b/src/store/prevalence/prevalence.lisp	Fri Nov 27 09:18:52 2009 +0100
+@@ -18,10 +18,10 @@
+ (defmethod open-store ((store-type (eql :prevalence)) &rest args)
+   (let* ((store (apply #'make-instance 'guarded-prevalence-system :directory (car args) (cdr args)))
+          (lock-name (format nil "Prevalence lock for store ~S" store))
+-         (lock (hunchentoot-mp:make-lock lock-name)))
++         (lock (bordeaux-threads:make-lock lock-name)))
+     (setf (gethash store *locks*) lock)
+     (setf (get-guard store) (lambda (thunk)
+-                              (hunchentoot-mp:with-lock (lock)
++                              (bordeaux-threads:with-lock-held (lock)
+                                 (funcall thunk))))
+     (setf *default-store* store)))
+ 
+@@ -66,9 +66,11 @@
+   (:documentation "This class represents an alternative to RDBMS
+   table, holding object instances of a given class."))
+ 
+-(defmethod persist-object ((store prevalence-system) object)
+-  (execute store (make-transaction 'tx-persist-object-prevalence
+-				   object)))
++(defmethod persist-object ((store prevalence-system) object &key (txn-p t))
++  (if txn-p
++    (execute store (make-transaction 'tx-persist-object-prevalence
++                                     object))
++    (funcall 'tx-persist-object-prevalence store object)))
+ 
+ (defun tx-persist-object-prevalence (store object)
+   "Persists the object in the store."
+@@ -111,7 +113,8 @@
+ (defmethod find-persistent-object-by-id ((store prevalence-system) class-name object-id)
+   (let ((objects (get-root-object store class-name)))
+     ; find the object
+-    (gethash object-id (persistent-objects-of-class-by-id objects))))
++    (when objects
++      (gethash object-id (persistent-objects-of-class-by-id objects)))))
+ 
+ (defmethod find-persistent-objects ((store prevalence-system) class-name 
+ 				    &key (filter nil) order-by range slot
+@@ -156,3 +159,4 @@
+ 
+ (defun make-persistent-instance (store class &rest initargs)
+   (persist-object store (apply #'make-instance class initargs)))
++
+diff -r 8640341ac303 -r b3ab68b58d07 src/store/prevalence/weblocks-prevalence.asd
+--- a/src/store/prevalence/weblocks-prevalence.asd	Thu Nov 26 17:04:07 2009 +0100
++++ b/src/store/prevalence/weblocks-prevalence.asd	Fri Nov 27 09:18:52 2009 +0100
+@@ -11,7 +11,7 @@
+   :author "Slava Akhmechet"
+   :licence "LLGPL"
+   :description "A weblocks backend for cl-prevalence."
+-  :depends-on (:metatilities :cl-ppcre :cl-prevalence)
++  :depends-on (:metatilities :cl-ppcre :cl-prevalence :bordeaux-threads)
+   :components ((:file "prevalence"))
+   :in-order-to ((compile-op (prepare-prevalence-op :weblocks-prevalence))
+ 		(load-op (prepare-prevalence-op :weblocks-prevalence))))
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1259309932 -3600
+# Node ID b3ab68b58d0766a5bfa303e3726c0d9a0be48904
+# Parent  8640341ac30356c1c127ff964fea342282901fbe
+Add Bordeaux threads and make guarded prevalence system
+
+diff -r 8640341ac303 -r b3ab68b58d07 src/application.lisp
+--- a/src/application.lisp	Thu Nov 26 17:04:07 2009 +0100
++++ b/src/application.lisp	Fri Nov 27 09:18:52 2009 +0100
+@@ -290,13 +290,9 @@
+   (:method ((app t)) nil))
+ 
+ (defmethod finalize-webapp :after ((app weblocks-webapp))
+-  "When all webapps are shut down, close any open stores and stop the weblocks server"
++  "Shutdown Weblocks when no more apps are running."
+   (when (null *active-webapps*)
+-    (close-stores)
+-    (setf *last-session* nil)
+-    (reset-sessions)
+-    (stop-server *weblocks-server*)
+-    (setf *weblocks-server* nil)))
++    (stop-weblocks)))
+ 
+ (defun find-app (name)
+   (let ((app (get-webapp name nil))
+diff -r 8640341ac303 -r b3ab68b58d07 src/store/prevalence/prevalence.lisp
+--- a/src/store/prevalence/prevalence.lisp	Thu Nov 26 17:04:07 2009 +0100
++++ b/src/store/prevalence/prevalence.lisp	Fri Nov 27 09:18:52 2009 +0100
+@@ -18,10 +18,10 @@
+ (defmethod open-store ((store-type (eql :prevalence)) &rest args)
+   (let* ((store (apply #'make-instance 'guarded-prevalence-system :directory (car args) (cdr args)))
+          (lock-name (format nil "Prevalence lock for store ~S" store))
+-         (lock (hunchentoot-mp:make-lock lock-name)))
++         (lock (bordeaux-threads:make-lock lock-name)))
+     (setf (gethash store *locks*) lock)
+     (setf (get-guard store) (lambda (thunk)
+-                              (hunchentoot-mp:with-lock (lock)
++                              (bordeaux-threads:with-lock-held (lock)
+                                 (funcall thunk))))
+     (setf *default-store* store)))
+ 
+@@ -66,9 +66,11 @@
+   (:documentation "This class represents an alternative to RDBMS
+   table, holding object instances of a given class."))
+ 
+-(defmethod persist-object ((store prevalence-system) object)
+-  (execute store (make-transaction 'tx-persist-object-prevalence
+-				   object)))
++(defmethod persist-object ((store prevalence-system) object &key (txn-p t))
++  (if txn-p
++    (execute store (make-transaction 'tx-persist-object-prevalence
++                                     object))
++    (funcall 'tx-persist-object-prevalence store object)))
+ 
+ (defun tx-persist-object-prevalence (store object)
+   "Persists the object in the store."
+@@ -111,7 +113,8 @@
+ (defmethod find-persistent-object-by-id ((store prevalence-system) class-name object-id)
+   (let ((objects (get-root-object store class-name)))
+     ; find the object
+-    (gethash object-id (persistent-objects-of-class-by-id objects))))
++    (when objects
++      (gethash object-id (persistent-objects-of-class-by-id objects)))))
+ 
+ (defmethod find-persistent-objects ((store prevalence-system) class-name 
+ 				    &key (filter nil) order-by range slot
+@@ -156,3 +159,4 @@
+ 
+ (defun make-persistent-instance (store class &rest initargs)
+   (persist-object store (apply #'make-instance class initargs)))
++
+diff -r 8640341ac303 -r b3ab68b58d07 src/store/prevalence/weblocks-prevalence.asd
+--- a/src/store/prevalence/weblocks-prevalence.asd	Thu Nov 26 17:04:07 2009 +0100
++++ b/src/store/prevalence/weblocks-prevalence.asd	Fri Nov 27 09:18:52 2009 +0100
+@@ -11,7 +11,7 @@
+   :author "Slava Akhmechet"
+   :licence "LLGPL"
+   :description "A weblocks backend for cl-prevalence."
+-  :depends-on (:metatilities :cl-ppcre :cl-prevalence)
++  :depends-on (:metatilities :cl-ppcre :cl-prevalence :bordeaux-threads)
+   :components ((:file "prevalence"))
+   :in-order-to ((compile-op (prepare-prevalence-op :weblocks-prevalence))
+ 		(load-op (prepare-prevalence-op :weblocks-prevalence))))

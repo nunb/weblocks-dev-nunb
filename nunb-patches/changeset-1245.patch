@@ -1,0 +1,63 @@
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1247494327 -7200
+# Node ID 67d4c334134bd4d457f52bbf38c0feeb3f5b15f2
+# Parent  2189da72b9c4fc71ba789ffa5ee5b0d594f4c9d7
+Test change that may help IE.
+
+diff -r 2189da72b9c4 -r 67d4c334134b src/snippets/html-utils.lisp
+--- a/src/snippets/html-utils.lisp	Mon Jul 06 19:19:04 2009 +0200
++++ b/src/snippets/html-utils.lisp	Mon Jul 13 16:12:07 2009 +0200
+@@ -352,7 +352,9 @@
+       (*defer-inline-js*
+        (locally
+          (declare (special *page-scripts*))
+-         (push-end script *page-scripts*)))
++         (push-end (with-javascript-to-string script)
++		   ;script
++		   *page-scripts*)))
+       (t
+        (with-javascript
+          script))))
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1247494327 -7200
+# Node ID 67d4c334134bd4d457f52bbf38c0feeb3f5b15f2
+# Parent  2189da72b9c4fc71ba789ffa5ee5b0d594f4c9d7
+Test change that may help IE.
+
+diff -r 2189da72b9c4 -r 67d4c334134b src/snippets/html-utils.lisp
+--- a/src/snippets/html-utils.lisp	Mon Jul 06 19:19:04 2009 +0200
++++ b/src/snippets/html-utils.lisp	Mon Jul 13 16:12:07 2009 +0200
+@@ -352,7 +352,9 @@
+       (*defer-inline-js*
+        (locally
+          (declare (special *page-scripts*))
+-         (push-end script *page-scripts*)))
++         (push-end (with-javascript-to-string script)
++		   ;script
++		   *page-scripts*)))
+       (t
+        (with-javascript
+          script))))
+# HG changeset patch
+# User nunb <nunb@tallinn>
+# Date 1247494327 -7200
+# Node ID 67d4c334134bd4d457f52bbf38c0feeb3f5b15f2
+# Parent  2189da72b9c4fc71ba789ffa5ee5b0d594f4c9d7
+Test change that may help IE.
+
+diff -r 2189da72b9c4 -r 67d4c334134b src/snippets/html-utils.lisp
+--- a/src/snippets/html-utils.lisp	Mon Jul 06 19:19:04 2009 +0200
++++ b/src/snippets/html-utils.lisp	Mon Jul 13 16:12:07 2009 +0200
+@@ -352,7 +352,9 @@
+       (*defer-inline-js*
+        (locally
+          (declare (special *page-scripts*))
+-         (push-end script *page-scripts*)))
++         (push-end (with-javascript-to-string script)
++		   ;script
++		   *page-scripts*)))
+       (t
+        (with-javascript
+          script))))
